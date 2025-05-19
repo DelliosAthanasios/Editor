@@ -7,6 +7,8 @@ from PyQt5.QtWidgets import (
 )
 from PyQt5.QtGui import QFont, QPalette, QColor, QPainter
 from PyQt5.QtCore import Qt, QTimer
+import font_editor
+import subprocess
 
 class Minimap(QWidget):
     def __init__(self, parent, text_widget: QTextEdit, linenumbers=None):
@@ -176,7 +178,7 @@ class TextEditor(QMainWindow):
         split_screen_menu.addAction("Vertical Split")
 
         options_menu = menu_bar.addMenu("Options")
-        options_menu.addAction("Fonts")
+        options_menu.addAction("Font Editor",self.font_editor)
         options_menu.addAction("Theme Manager")
         options_menu.addAction("Extensions")
 
@@ -307,9 +309,33 @@ class TextEditor(QMainWindow):
     def set_light_theme(self):
         QApplication.setPalette(QApplication.style().standardPalette())
         self.setStyleSheet("")
-'''
-def toggle_number_line():
-On App startup:
+
+    def font_editor(self):
+        subprocess.run(["python", "font_editor.py"])
+        #os.system("font_editor.py")
+        # I must fix importing later
+    '''
+    def languages(self):
+        subprocess.run(["python","win3.py"])
+
+  
+
+
+
+def numberline():
+   on view_toggle_numberline press:
+   create a list which counts the lines of the current tab name of list NL=[]
+   (always start from 1)
+   Make the appear vertically example (1
+                                       2
+                                       ...)
+   if the tab is empty:
+       start list
+       On enter key press :
+          go to the text element of the list
+          extend the list by one(so the list will never end)
+    
+   
 
 '''
 
