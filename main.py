@@ -205,7 +205,9 @@ class TextEditor(QMainWindow):
         tools_menu.addAction("Control Panel")
         tools_menu.addAction("Open PDF")
         tools_menu.addAction("Open Image")
+        tools_menu.addAction("Diagramm Sketch")
         tools_menu.addAction("View Editor Source Code")
+        
 
     def new_file(self):
         try:
@@ -312,14 +314,12 @@ class TextEditor(QMainWindow):
 
     def font_editor(self):
         subprocess.run(["python", "font_editor.py"])
-        #os.system("font_editor.py")
-        # I must fix importing later
-    '''
-    def languages(self):
-        subprocess.run(["python","win3.py"])
-
+        """
+        Make it so that the changes in the font_editor.py
+        change the text font in the canvas of the main programm
+"""
   
-
+"""
 
 
 def numberline():
@@ -334,10 +334,19 @@ def numberline():
        On enter key press :
           go to the text element of the list
           extend the list by one(so the list will never end)
+   if file != empty:
+       count the lines of the file
+       create the list
+       On enter key press :
+          go to the text element of the list
+          extend the list by one(so the list will never end)
+  When the font changes:
+      change the font of the number in the list so text and numberline
+      alines
+      
     
    
-
-'''
+"""
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)
