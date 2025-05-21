@@ -1,14 +1,81 @@
 import sys
 import os
+import json
 from PyQt5.QtWidgets import (
-    QApplication, QMainWindow, QMenuBar, QAction, QFileDialog,
+    QApplication, QMainWindow, QAction, QFileDialog,
     QTextEdit, QStyleFactory, QTabWidget, QWidget, QHBoxLayout,
     QMessageBox
 )
-from PyQt5.QtGui import QFont, QPalette, QColor, QPainter
-from PyQt5.QtCore import Qt, QTimer
-import font_editor
+from PyQt5.QtGui import QFont, QPalette, QColor, QPainter, QFontMetrics
+from PyQt5.QtCore import Qt, QTimer, QRect
 import subprocess
+
+FONT_CONFIG_PATH = "font_config.json"
+
+def load_font_config():
+    try:
+        if os.path.exists(FONT_CONFIG_PATH):
+            with open(FONT_CONFIG_PATH, "r") as f:
+                config = json.load(f)
+                font = QFont(config["family"], config["size"])
+                font.setBold(config.get("bold", False))
+                font.setItalic(config.get("italic", False))
+                font.setUnderline(config.get("underline", False))
+                return font
+    except Exception as e:
+        print("Error loading font config:", e)
+    return QFont("Fira Code", 12)
+
+class NumberLine(QWidget):
+    def __init__(self, editor: QTextEdit, font: QFont):
+        super().__init__(editor)
+        self.editor = editor
+        self.font = font
+        self.setFont(font)
+        self.setMinimumWidth(self.calculate_width())
+        self.editor.textChanged.connect(self.updateWidth)
+        self.editor.verticalScrollBar().valueChanged.connect(self.update)
+        self.editor.cursorPositionChanged.connect(self.update)
+        self.show()
+
+    def setFont(self, font):
+        self.font = font
+        super().setFont(font)
+        self.setMinimumWidth(self.calculate_width())
+        self.update()
+
+    def calculate_width(self):
+        fm = QFontMetrics(self.font)
+        digits = max(2, len(str(max(1, self.editor.document().blockCount()))))
+        return 10 + fm.width("9" * digits)
+
+    def updateWidth(self):
+        self.setMinimumWidth(self.calculate_width())
+        self.update()
+
+    def paintEvent(self, event):
+        try:
+            painter = QPainter(self)
+            painter.fillRect(event.rect(), QColor("#222226"))
+            painter.setFont(self.font)
+            block = self.editor.document().firstBlock()
+            scroll_pos = self.editor.verticalScrollBar().value()
+            line_height = QFontMetrics(self.font).height()
+            top_margin = -scroll_pos
+            viewport_height = self.editor.viewport().height()
+            y = top_margin
+            line_num = 1
+
+            while block.isValid() and y < viewport_height:
+                if block.isVisible():
+                    rect = QRect(0, int(y), self.width(), line_height)
+                    painter.setPen(QColor("#909090"))
+                    painter.drawText(rect, Qt.AlignRight | Qt.AlignVCenter, str(line_num))
+                    y += line_height
+                    line_num += 1
+                block = block.next()
+        except Exception as e:
+            print("Error in NumberLine paintEvent:", e)
 
 class Minimap(QWidget):
     def __init__(self, parent, text_widget: QTextEdit, linenumbers=None):
@@ -29,6 +96,7 @@ class Minimap(QWidget):
         self.text_widget.viewport().installEventFilter(self)
         self.text_widget.document().contentsChanged.connect(self.schedule_update)
         self.text_widget.verticalScrollBar().valueChanged.connect(self.schedule_update)
+        self.text_widget.cursorPositionChanged.connect(self.schedule_update)
 
         self.update_timer = QTimer()
         self.update_timer.setSingleShot(True)
@@ -41,29 +109,50 @@ class Minimap(QWidget):
         self.update()
 
     def paintEvent(self, event):
-        painter = QPainter(self)
-        painter.fillRect(self.rect(), QColor("#2e2e2e"))
+        try:
+            painter = QPainter(self)
+            painter.fillRect(self.rect(), QColor("#2e2e2e"))
 
-        height = self.height()
-        total_lines = self.text_widget.document().blockCount()
-        lines_to_render = int(height / self.line_spacing)
+            widget_height = self.height()
+            total_lines = self.text_widget.document().blockCount()
+            if total_lines == 0:
+                return
 
-        first_visible = self.text_widget.cursorForPosition(self.text_widget.viewport().rect().topLeft()).blockNumber()
-        last_visible = min(first_visible + lines_to_render, total_lines)
+            lines_to_render = int(widget_height / self.line_spacing)
+            sb = self.text_widget.verticalScrollBar()
+            max_scroll = sb.maximum()
+            scroll_ratio = (sb.value() / max(1, max_scroll))
+            first_visible = int(scroll_ratio * (total_lines - lines_to_render))
+            first_visible = max(0, first_visible)
+            last_visible = min(first_visible + lines_to_render, total_lines)
+            visible_lines = last_visible - first_visible
 
-        font = QFont(self.font_name, self.font_size)
-        painter.setFont(font)
-        painter.setPen(QColor("#909090"))
+            total_content_height = visible_lines * self.line_spacing
+            y_offset = max(0, (widget_height - total_content_height) // 2)
 
-        block = self.text_widget.document().findBlockByNumber(first_visible)
-        for idx in range(first_visible, last_visible):
-            y_pos = (idx - first_visible) * self.line_spacing
-            text = block.text().replace('\t', '    ')[:self.max_line_length]
-            painter.drawText(2, y_pos + self.font_size, text)
-            block = block.next()
+            font = QFont(self.font_name, self.font_size)
+            painter.setFont(font)
+            painter.setPen(QColor("#909090"))
 
-        if self.linenumbers and self.linenumbers.isVisible():
-            self.linenumbers.update()
+            block = self.text_widget.document().findBlockByNumber(first_visible)
+            for idx in range(first_visible, last_visible):
+                y_pos = y_offset + (idx - first_visible) * self.line_spacing
+                text = block.text().replace('\t', '    ')[:self.max_line_length]
+                painter.drawText(2, y_pos + self.font_size, text)
+                block = block.next()
+
+            if max_scroll > 0:
+                ratio = self.text_widget.viewport().height() / max(1, self.text_widget.document().size().height() * self.text_widget.fontMetrics().height())
+                indicator_height = int(ratio * widget_height)
+                indicator_y = int(sb.value() / max(1, max_scroll) * (widget_height - indicator_height))
+                painter.setBrush(QColor(80, 80, 180, 80))
+                painter.setPen(Qt.NoPen)
+                painter.drawRect(0, indicator_y, self.width(), indicator_height)
+
+            if self.linenumbers and self.linenumbers.isVisible():
+                self.linenumbers.update()
+        except Exception as e:
+            print("Error in Minimap paintEvent:", e)
 
     def mousePressEvent(self, event):
         if event.button() == Qt.LeftButton:
@@ -75,28 +164,29 @@ class Minimap(QWidget):
 
     def wheelEvent(self, event):
         direction = -1 if event.angleDelta().y() > 0 else 1
-        self.text_widget.verticalScrollBar().setValue(
-            self.text_widget.verticalScrollBar().value() + direction * 3
-        )
+        sb = self.text_widget.verticalScrollBar()
+        sb.setValue(sb.value() + direction * 3)
         self.schedule_update()
 
     def scroll_to_click(self, y):
         total_lines = self.text_widget.document().blockCount()
-        rel_y = y / self.height()
-        target_line = max(0, min(int(rel_y * total_lines), total_lines - 1))
-        cursor = self.text_widget.textCursor()
-        cursor.movePosition(cursor.Start)
-        cursor.movePosition(cursor.Down, cursor.MoveAnchor, target_line)
-        self.text_widget.setTextCursor(cursor)
-        self.text_widget.centerCursor()
+        if total_lines == 0:
+            return
+
+        widget_height = self.height()
+        rel_y = y / max(1, widget_height)
+        sb = self.text_widget.verticalScrollBar()
+        max_scroll = sb.maximum()
+        target_scroll = int(rel_y * max_scroll)
+        sb.setValue(target_scroll)
         self.last_y = y
         self.schedule_update()
 
     def on_drag(self, y):
-        delta = (y - self.last_y) * 2
-        self.text_widget.verticalScrollBar().setValue(
-            self.text_widget.verticalScrollBar().value() + int(-delta)
-        )
+        sb = self.text_widget.verticalScrollBar()
+        widget_height = self.height()
+        delta = (y - self.last_y)
+        sb.setValue(sb.value() + int(delta * sb.maximum() / max(1, widget_height)))
         self.last_y = y
         self.schedule_update()
 
@@ -104,13 +194,52 @@ class Minimap(QWidget):
         self.schedule_update()
         return super().eventFilter(obj, event)
 
+class EditorTabWidget(QWidget):
+    def __init__(self, parent=None, font=None, numberline_on_left=True):
+        super().__init__(parent)
+        self.layout = QHBoxLayout(self)
+        self.layout.setContentsMargins(0, 0, 0, 0)
+        self.editor = QTextEdit()
+        self.numberline = NumberLine(self.editor, font or QFont("Fira Code", 12))
+        self.minimap = Minimap(self, self.editor, self.numberline)
+        self.numberline_on_left = numberline_on_left
+        self.update_layout()
+        self.numberline.show()
+        self.minimap.show()
+
+    def update_layout(self):
+        while self.layout.count():
+            item = self.layout.takeAt(0)
+            if item.widget():
+                item.widget().setParent(None)
+        if self.numberline_on_left:
+            self.layout.addWidget(self.numberline)
+            self.layout.addWidget(self.editor)
+            self.layout.addWidget(self.minimap)
+        else:
+            self.layout.addWidget(self.minimap)
+            self.layout.addWidget(self.editor)
+            self.layout.addWidget(self.numberline)
+
+    def setFont(self, font):
+        self.editor.setFont(font)
+        self.numberline.setFont(font)
+        self.numberline.update()
+        self.editor.update()
+
+    def set_numberline_side(self, left=True):
+        self.numberline_on_left = left
+        self.update_layout()
+
 class TextEditor(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Third Edit")
         self.setGeometry(100, 100, 1200, 800)
         self.setStyle(QStyleFactory.create("Fusion"))
-
+        self.current_font = load_font_config()
+        self.show_numberline = True
+        self.numberline_on_left = True
         self.init_ui()
         self.set_dark_theme()
 
@@ -123,19 +252,13 @@ class TextEditor(QMainWindow):
         self.create_menu_bar()
 
     def add_new_tab(self, title="Untitled", content=""):
-        editor = QTextEdit()
-        editor.setFont(QFont("Fira Code", 12))
-        editor.setPlainText(content)
-        minimap = Minimap(self, editor)
-
-        container = QWidget()
-        layout = QHBoxLayout(container)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.addWidget(editor)
-        layout.addWidget(minimap)
-
-        index = self.tabs.addTab(container, title)
+        editor_tab = EditorTabWidget(font=self.current_font, numberline_on_left=self.numberline_on_left)
+        editor_tab.editor.setPlainText(content)
+        index = self.tabs.addTab(editor_tab, title)
         self.tabs.setCurrentIndex(index)
+        editor_tab.numberline.setVisible(self.show_numberline)
+        editor_tab.editor.textChanged.connect(editor_tab.numberline.update)
+        editor_tab.editor.cursorPositionChanged.connect(editor_tab.numberline.update)
 
     def close_tab(self, index):
         self.tabs.removeTab(index)
@@ -153,9 +276,9 @@ class TextEditor(QMainWindow):
         file_menu.addAction("Close Tab", lambda: self.close_tab(self.tabs.currentIndex()))
 
         edit_menu = menu_bar.addMenu("Edit")
-        edit_menu.addAction("Undo")
-        edit_menu.addAction("Redo")
-        edit_menu.addAction("Select All")
+        edit_menu.addAction("Undo", self.trigger_undo)
+        edit_menu.addAction("Redo", self.trigger_redo)
+        edit_menu.addAction("Select All", self.trigger_select_all)
         search_menu = edit_menu.addMenu("Search")
         search_menu.addAction("Replace")
         go_to_menu = edit_menu.addMenu("Go To")
@@ -166,9 +289,15 @@ class TextEditor(QMainWindow):
         checkpoints_menu.addAction("Go to Checkpoint")
 
         view_menu = menu_bar.addMenu("View")
-        view_menu.addAction("Toggle Number Line")
-        view_menu.addAction("Rotate Number Line")
-        view_menu.addAction("Toggle Minimap")
+        toggle_numberline_action = QAction("Toggle Number Line", self)
+        toggle_numberline_action.setCheckable(True)
+        toggle_numberline_action.setChecked(self.show_numberline)
+        toggle_numberline_action.triggered.connect(self.view_toggle_numberline)
+        view_menu.addAction(toggle_numberline_action)
+        rotate_numberline_action = QAction("Rotate Number Line", self)
+        rotate_numberline_action.triggered.connect(self.rotate_number_line)
+        view_menu.addAction(rotate_numberline_action)
+        view_menu.addAction("Toggle Minimap", self.toggle_minimap)
         view_menu.addAction("Toggle File Menu")
         split_screen_menu = view_menu.addMenu("Split Screen")
         Themes_screen_menu = view_menu.addMenu("Themes")
@@ -178,7 +307,7 @@ class TextEditor(QMainWindow):
         split_screen_menu.addAction("Vertical Split")
 
         options_menu = menu_bar.addMenu("Options")
-        options_menu.addAction("Font Editor",self.font_editor)
+        options_menu.addAction("Font Editor", self.font_editor)
         options_menu.addAction("Theme Manager")
         options_menu.addAction("Extensions")
 
@@ -207,7 +336,41 @@ class TextEditor(QMainWindow):
         tools_menu.addAction("Open Image")
         tools_menu.addAction("Diagramm Sketch")
         tools_menu.addAction("View Editor Source Code")
-        
+
+    def trigger_undo(self):
+        widget = self.tabs.currentWidget()
+        if widget and hasattr(widget, "editor"):
+            widget.editor.undo()
+
+    def trigger_redo(self):
+        widget = self.tabs.currentWidget()
+        if widget and hasattr(widget, "editor"):
+            widget.editor.redo()
+
+    def trigger_select_all(self):
+        widget = self.tabs.currentWidget()
+        if widget and hasattr(widget, "editor"):
+            widget.editor.selectAll()
+
+    def view_toggle_numberline(self):
+        self.show_numberline = not self.show_numberline
+        for i in range(self.tabs.count()):
+            tab = self.tabs.widget(i)
+            if hasattr(tab, "numberline"):
+                tab.numberline.setVisible(self.show_numberline)
+
+    def toggle_minimap(self):
+        for i in range(self.tabs.count()):
+            tab = self.tabs.widget(i)
+            if hasattr(tab, "minimap"):
+                tab.minimap.setVisible(not tab.minimap.isVisible())
+
+    def rotate_number_line(self):
+        self.numberline_on_left = not self.numberline_on_left
+        for i in range(self.tabs.count()):
+            tab = self.tabs.widget(i)
+            if hasattr(tab, "set_numberline_side"):
+                tab.set_numberline_side(self.numberline_on_left)
 
     def new_file(self):
         try:
@@ -236,8 +399,7 @@ class TextEditor(QMainWindow):
         current_widget = self.tabs.currentWidget()
         if not current_widget:
             return
-
-        editor = current_widget.layout().itemAt(0).widget()
+        editor = current_widget.editor
         content = editor.toPlainText()
 
         file_path, _ = QFileDialog.getSaveFileName(
@@ -259,7 +421,7 @@ class TextEditor(QMainWindow):
             return
 
         current_widget = self.tabs.widget(current_index)
-        editor = current_widget.layout().itemAt(0).widget()
+        editor = current_widget.editor
         content = editor.toPlainText()
         original_name = self.tabs.tabText(current_index)
 
@@ -306,47 +468,24 @@ class TextEditor(QMainWindow):
             QMenu { background-color: #2b2b2b; color: white; }
             QMenu::item:selected { background-color: #44475a; }
         """)
-        
 
     def set_light_theme(self):
         QApplication.setPalette(QApplication.style().standardPalette())
         self.setStyleSheet("")
 
     def font_editor(self):
-        subprocess.run(["python", "font_editor.py"])
-        """
-        Make it so that the changes in the font_editor.py
-        change the text font in the canvas of the main programm
-"""
-  
-"""
+        # Integrated: apply font without restart using signal
+        from font_editor import FontEditor
+        self.font_editor_window = FontEditor()
+        self.font_editor_window.settings_applied.connect(self.apply_font_from_editor)
+        self.font_editor_window.show()
 
-
-def numberline():
-   on view_toggle_numberline press:
-   create a list which counts the lines of the current tab name of list NL=[]
-   (always start from 1)
-   Make the appear vertically example (1
-                                       2
-                                       ...)
-   if the tab is empty:
-       start list
-       On enter key press :
-          go to the text element of the list
-          extend the list by one(so the list will never end)
-   if file != empty:
-       count the lines of the file
-       create the list
-       On enter key press :
-          go to the text element of the list
-          extend the list by one(so the list will never end)
-  When the font changes:
-      change the font of the number in the list so text and numberline
-      alines
-      
-    
-   
-"""
+    def apply_font_from_editor(self, font):
+        self.current_font = font
+        for i in range(self.tabs.count()):
+            tab = self.tabs.widget(i)
+            if hasattr(tab, "setFont"):
+                tab.setFont(font)
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)
