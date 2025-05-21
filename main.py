@@ -4,11 +4,10 @@ import json
 from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QAction, QFileDialog,
     QTextEdit, QStyleFactory, QTabWidget, QWidget, QHBoxLayout,
-    QMessageBox
+    QMessageBox, QVBoxLayout
 )
 from PyQt5.QtGui import QFont, QPalette, QColor, QPainter, QFontMetrics
 from PyQt5.QtCore import Qt, QTimer, QRect
-import subprocess
 
 FONT_CONFIG_PATH = "font_config.json"
 
@@ -58,22 +57,46 @@ class NumberLine(QWidget):
             painter = QPainter(self)
             painter.fillRect(event.rect(), QColor("#222226"))
             painter.setFont(self.font)
-            block = self.editor.document().firstBlock()
-            scroll_pos = self.editor.verticalScrollBar().value()
-            line_height = QFontMetrics(self.font).height()
-            top_margin = -scroll_pos
-            viewport_height = self.editor.viewport().height()
-            y = top_margin
-            line_num = 1
+            fm = QFontMetrics(self.font)
 
-            while block.isValid() and y < viewport_height:
-                if block.isVisible():
-                    rect = QRect(0, int(y), self.width(), line_height)
-                    painter.setPen(QColor("#909090"))
-                    painter.drawText(rect, Qt.AlignRight | Qt.AlignVCenter, str(line_num))
-                    y += line_height
-                    line_num += 1
+            # Calculate the first visible block
+            cursor = self.editor.textCursor()
+            doc = self.editor.document()
+            block = doc.firstBlock()
+
+            # Get the vertical scroll bar value
+            scroll_bar = self.editor.verticalScrollBar()
+            scroll_value = scroll_bar.value()
+
+            # Calculate line height and visible lines
+            line_height = fm.lineSpacing()
+            viewport_height = self.editor.viewport().height()
+
+            # The y offset (in pixels) at which the viewport starts in the document
+            y_offset = -scroll_value
+
+            # For every visible block, draw its number
+            block = doc.firstBlock()
+            block_number = 1
+            block_y = y_offset
+
+            # Calculate pixel offset for each block using block layout
+            layout = self.editor.document().documentLayout()
+            while block.isValid():
+                rect = layout.blockBoundingRect(block)
+                block_top = rect.translated(0, y_offset).top()
+                block_bottom = rect.translated(0, y_offset).bottom()
+                if block_bottom < 0:
+                    block = block.next()
+                    block_number += 1
+                    continue
+                if block_top > viewport_height:
+                    break
+                painter.setPen(QColor("#909090"))
+                rect_to_draw = QRect(0, int(block_top), self.width(), line_height)
+                painter.drawText(rect_to_draw, Qt.AlignRight | Qt.AlignVCenter, str(block_number))
                 block = block.next()
+                block_number += 1
         except Exception as e:
             print("Error in NumberLine paintEvent:", e)
 
@@ -200,6 +223,8 @@ class EditorTabWidget(QWidget):
         self.layout = QHBoxLayout(self)
         self.layout.setContentsMargins(0, 0, 0, 0)
         self.editor = QTextEdit()
+        self.editor.setFrameStyle(QTextEdit.NoFrame)
+        self.editor.setContentsMargins(0, 0, 0, 0)
         self.numberline = NumberLine(self.editor, font or QFont("Fira Code", 12))
         self.minimap = Minimap(self, self.editor, self.numberline)
         self.numberline_on_left = numberline_on_left
@@ -474,7 +499,6 @@ class TextEditor(QMainWindow):
         self.setStyleSheet("")
 
     def font_editor(self):
-        # Integrated: apply font without restart using signal
         from font_editor import FontEditor
         self.font_editor_window = FontEditor()
         self.font_editor_window.settings_applied.connect(self.apply_font_from_editor)

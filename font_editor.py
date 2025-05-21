@@ -4,7 +4,7 @@ import os
 from PyQt5.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, QHBoxLayout, QLabel,
     QSpinBox, QPushButton, QCheckBox, QGroupBox,
-    QColorDialog, QTextEdit, QFontComboBox, QMessageBox, QSizePolicy
+    QColorDialog, QTextEdit, QFontComboBox, QMessageBox, QSizePolicy, QSpacerItem
 )
 from PyQt5.QtGui import QFont, QColor, QPalette, QIcon
 from PyQt5.QtCore import Qt, pyqtSignal
@@ -18,7 +18,6 @@ def save_font_to_config(font: QFont):
         "bold": font.bold(),
         "italic": font.italic(),
         "underline": font.underline()
-        # If you want to save colors, you can add them here
     }
     with open(CONFIG_PATH, "w") as f:
         json.dump(config, f)
@@ -30,7 +29,7 @@ class FontEditor(QWidget):
         super().__init__(parent)
         self.dark_mode = True
         self.text_color = QColor(Qt.white)
-        self.bg_color = QColor(Qt.transparent)  # Editor bg will be transparent (no color set)
+        self.bg_color = QColor(Qt.transparent)
         self.init_ui()
         self.update_ui_theme()
         self.load_config_to_ui()
@@ -39,6 +38,7 @@ class FontEditor(QWidget):
         self.setWindowTitle("Font Editor")
         self.setWindowIcon(QIcon.fromTheme("preferences-desktop-font"))
         self.resize(540, 420)
+        self.setMinimumWidth(350)
         self.setStyleSheet("""
             QWidget {
                 font-family: 'Segoe UI', 'Fira Sans', 'Arial', sans-serif;
@@ -59,7 +59,7 @@ class FontEditor(QWidget):
             QPushButton {
                 min-width: 90px;
                 border-radius: 5px;
-                padding: 4px 16px;
+                padding: 7px 16px;
                 background-color: #232323;
                 color: #fff;
                 font-weight: bold;
@@ -80,6 +80,7 @@ class FontEditor(QWidget):
         """)
 
         main_layout = QVBoxLayout(self)
+        main_layout.setContentsMargins(12, 12, 12, 12)
 
         # Preview Group
         self.preview_group = QGroupBox("Preview")
@@ -87,7 +88,7 @@ class FontEditor(QWidget):
         self.preview_text = QTextEdit()
         self.preview_text.setPlainText("The quick brown fox jumps over the lazy dog\n1234567890\n!@#$%^&*()")
         self.preview_text.setAlignment(Qt.AlignCenter)
-        self.preview_text.setMinimumHeight(120)
+        self.preview_text.setMinimumHeight(100)
         self.preview_text.setMaximumHeight(140)
         self.preview_text.setReadOnly(True)
         self.preview_text.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Minimum)
@@ -135,13 +136,14 @@ class FontEditor(QWidget):
         self.bg_color_btn.clicked.connect(self.choose_bg_color)
         color_layout.addWidget(self.text_color_btn)
         color_layout.addWidget(self.bg_color_btn)
+        color_layout.addItem(QSpacerItem(10, 10, QSizePolicy.Expanding, QSizePolicy.Minimum))
         font_layout.addLayout(color_layout)
 
         font_group.setLayout(font_layout)
 
-        # Action Buttons
+        # Action Buttons (horizontal row, responsive)
         button_layout = QHBoxLayout()
-        button_layout.addStretch(1)
+        button_layout.addItem(QSpacerItem(10, 10, QSizePolicy.Expanding, QSizePolicy.Minimum))
         self.apply_btn = QPushButton("Apply")
         self.apply_btn.clicked.connect(self.apply_settings)
         self.ok_btn = QPushButton("OK")
@@ -151,15 +153,22 @@ class FontEditor(QWidget):
         button_layout.addWidget(self.apply_btn)
         button_layout.addWidget(self.ok_btn)
         button_layout.addWidget(self.cancel_btn)
+        button_layout.addItem(QSpacerItem(10, 10, QSizePolicy.Expanding, QSizePolicy.Minimum))
 
-        # Theme Toggle
+        # Theme Toggle (centered)
+        theme_toggle_layout = QHBoxLayout()
+        theme_toggle_layout.addItem(QSpacerItem(10, 10, QSizePolicy.Expanding, QSizePolicy.Minimum))
         self.theme_toggle = QPushButton("Switch to Light Mode")
         self.theme_toggle.clicked.connect(self.toggle_theme)
         self.theme_toggle.setStyleSheet("background-color: #232632; color: #fff; min-width: 170px; border: 1px solid #44475a;")
+        theme_toggle_layout.addWidget(self.theme_toggle)
+        theme_toggle_layout.addItem(QSpacerItem(10, 10, QSizePolicy.Expanding, QSizePolicy.Minimum))
 
+        # Add all widgets to main layout
         main_layout.addWidget(self.preview_group)
         main_layout.addWidget(font_group)
-        main_layout.addWidget(self.theme_toggle)
+        main_layout.addLayout(theme_toggle_layout)
+        main_layout.addStretch(1)
         main_layout.addLayout(button_layout)
 
     def load_config_to_ui(self):
@@ -246,11 +255,15 @@ class FontEditor(QWidget):
         self.setPalette(palette)
         self.preview_text.setPalette(palette)
 
-        btn_style = "background-color: #18191a; color: #fff; border: 1px solid #44475a;" if self.dark_mode else \
-                    "background-color: #f8f8f8; color: #222; border: 1px solid #bbb;"
+        btn_style = (
+            "background-color: #18191a; color: #fff; border: 1px solid #44475a;"
+            if self.dark_mode else
+            "background-color: #f8f8f8; color: #222; border: 1px solid #bbb;"
+        )
         self.apply_btn.setStyleSheet(btn_style)
         self.ok_btn.setStyleSheet(btn_style)
         self.cancel_btn.setStyleSheet(btn_style)
+        self.theme_toggle.setStyleSheet(btn_style + " min-width: 170px;")
 
     def get_current_font(self):
         font = self.font_family_cb.currentFont()
