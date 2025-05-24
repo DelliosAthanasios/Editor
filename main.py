@@ -7,7 +7,7 @@ from PyQt5.QtWidgets import (
     QMessageBox, QVBoxLayout, QTreeView, QFileSystemModel, QSplitter
 )
 from PyQt5.QtGui import QFont, QPalette, QColor, QPainter, QFontMetrics, QIcon
-from PyQt5.QtCore import Qt, QTimer, QRect, QDir  # <-- Fix: QDir imported
+from PyQt5.QtCore import Qt, QTimer, QRect, QDir
 
 # --- File Explorer integration ---
 from file_explorer import FileExplorer
@@ -29,11 +29,11 @@ def load_font_config():
     return QFont("Fira Code", 12)
 
 class NumberLine(QWidget):
-    def __init__(self, editor: QTextEdit, font: QFont):
+    def __init__(self, editor: QTextEdit):
         super().__init__(editor)
         self.editor = editor
-        self.font = font
-        self.setFont(font)
+        self.font = editor.font()  # Ensure font matches editor at init
+        self.setFont(self.font)
         self.setMinimumWidth(self.calculate_width())
         self.editor.textChanged.connect(self.updateWidth)
         self.editor.verticalScrollBar().valueChanged.connect(self.update)
@@ -228,7 +228,12 @@ class EditorTabWidget(QWidget):
         self.editor = QTextEdit()
         self.editor.setFrameStyle(QTextEdit.NoFrame)
         self.editor.setContentsMargins(0, 0, 0, 0)
-        self.numberline = NumberLine(self.editor, font or QFont("Fira Code", 12))
+        if font is not None:
+            self.editor.setFont(font)
+        else:
+            font = self.editor.font()
+        self.numberline = NumberLine(self.editor)
+        self.numberline.setFont(self.editor.font())  # Sync font immediately
         self.minimap = Minimap(self, self.editor, self.numberline)
         self.numberline_on_left = numberline_on_left
         self.update_layout()
@@ -251,7 +256,7 @@ class EditorTabWidget(QWidget):
 
     def setFont(self, font):
         self.editor.setFont(font)
-        self.numberline.setFont(font)
+        self.numberline.setFont(font)  # Always keep in sync
         self.numberline.update()
         self.editor.update()
 
@@ -269,7 +274,7 @@ class FileTreeWidget(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         self.model = QFileSystemModel()
         try:
-            self.model.setRootPath(QDir.rootPath())  # <-- Fix: QDir is now imported
+            self.model.setRootPath(QDir.rootPath())
             self.tree = QTreeView()
             self.tree.setModel(self.model)
             self.tree.setRootIndex(self.model.index(QDir.rootPath()))
@@ -281,7 +286,6 @@ class FileTreeWidget(QWidget):
             layout.addWidget(self.tree)
         except Exception as e:
             print("Error initializing FileTreeWidget:", e)
-            # Optionally display a warning widget here
         self.setLayout(layout)
 
     def open_file_from_tree(self, index):
@@ -293,7 +297,6 @@ class FileTreeWidget(QWidget):
 
     @staticmethod
     def is_supported(file_path):
-        # Simple check for text/code files; expand as needed
         supported = (".txt", ".py", ".md", ".json", ".ini", ".csv", ".log")
         return file_path.lower().endswith(supported)
 
@@ -466,10 +469,6 @@ class TextEditor(QMainWindow):
         tools_menu.addAction("Open Image")
         tools_menu.addAction("Diagramm Sketch")
         tools_menu.addAction("View Editor Source Code")
-
-        
-
-        
 
     def trigger_undo(self):
         widget = self.tabs.currentWidget()
