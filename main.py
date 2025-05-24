@@ -4,10 +4,13 @@ import json
 from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QAction, QFileDialog,
     QTextEdit, QStyleFactory, QTabWidget, QWidget, QHBoxLayout,
-    QMessageBox, QVBoxLayout
+    QMessageBox, QVBoxLayout, QTreeView, QFileSystemModel, QSplitter
 )
-from PyQt5.QtGui import QFont, QPalette, QColor, QPainter, QFontMetrics
-from PyQt5.QtCore import Qt, QTimer, QRect
+from PyQt5.QtGui import QFont, QPalette, QColor, QPainter, QFontMetrics, QIcon
+from PyQt5.QtCore import Qt, QTimer, QRect, QDir  # <-- Fix: QDir imported
+
+# --- File Explorer integration ---
+from file_explorer import FileExplorer
 
 FONT_CONFIG_PATH = "font_config.json"
 
@@ -256,6 +259,72 @@ class EditorTabWidget(QWidget):
         self.numberline_on_left = left
         self.update_layout()
 
+class FileTreeWidget(QWidget):
+    """A simple file tree browser using QFileSystemModel and QTreeView."""
+
+    def __init__(self, file_open_callback, parent=None):
+        super().__init__(parent)
+        self.file_open_callback = file_open_callback
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        self.model = QFileSystemModel()
+        try:
+            self.model.setRootPath(QDir.rootPath())  # <-- Fix: QDir is now imported
+            self.tree = QTreeView()
+            self.tree.setModel(self.model)
+            self.tree.setRootIndex(self.model.index(QDir.rootPath()))
+            self.tree.setHeaderHidden(True)
+            self.tree.doubleClicked.connect(self.open_file_from_tree)
+            self.tree.setAnimated(True)
+            self.tree.setIndentation(16)
+            self.tree.setSortingEnabled(True)
+            layout.addWidget(self.tree)
+        except Exception as e:
+            print("Error initializing FileTreeWidget:", e)
+            # Optionally display a warning widget here
+        self.setLayout(layout)
+
+    def open_file_from_tree(self, index):
+        if not index.isValid():
+            return
+        file_path = self.model.filePath(index)
+        if os.path.isfile(file_path) and self.is_supported(file_path):
+            self.file_open_callback(file_path)
+
+    @staticmethod
+    def is_supported(file_path):
+        # Simple check for text/code files; expand as needed
+        supported = (".txt", ".py", ".md", ".json", ".ini", ".csv", ".log")
+        return file_path.lower().endswith(supported)
+
+class MainTabWidget(QTabWidget):
+    """Main application tab widget, supports both editors and file explorer."""
+
+    def __init__(self, file_open_callback, parent=None):
+        super().__init__(parent)
+        self.setTabsClosable(True)
+        self.tabCloseRequested.connect(self.close_tab)
+        self.file_open_callback = file_open_callback
+
+    def add_editor_tab(self, title="Untitled", content="", font=None, numberline_on_left=True, file_path=None):
+        editor_tab = EditorTabWidget(font=font, numberline_on_left=numberline_on_left)
+        editor_tab.editor.setPlainText(content)
+        index = self.addTab(editor_tab, title)
+        self.setCurrentIndex(index)
+        editor_tab.numberline.setVisible(True)
+        editor_tab.editor.textChanged.connect(editor_tab.numberline.update)
+        editor_tab.editor.cursorPositionChanged.connect(editor_tab.numberline.update)
+        # Optionally associate the file path with the tab
+        editor_tab._file_path = file_path
+
+    def add_file_explorer_tab(self):
+        explorer = FileExplorer()
+        index = self.addTab(explorer, "File Explorer")
+        self.setCurrentIndex(index)
+
+    def close_tab(self, index):
+        self.removeTab(index)
+
 class TextEditor(QMainWindow):
     def __init__(self):
         super().__init__()
@@ -265,28 +334,58 @@ class TextEditor(QMainWindow):
         self.current_font = load_font_config()
         self.show_numberline = True
         self.numberline_on_left = True
+        self.filetree_visible = False
         self.init_ui()
         self.set_dark_theme()
 
     def init_ui(self):
-        self.tabs = QTabWidget()
-        self.tabs.setTabsClosable(True)
-        self.tabs.tabCloseRequested.connect(self.close_tab)
-        self.add_new_tab()
-        self.setCentralWidget(self.tabs)
+        self.tabs = MainTabWidget(file_open_callback=self.open_file_in_editor_tab)
+        self.tabs.add_editor_tab(font=self.current_font, numberline_on_left=self.numberline_on_left)
+        # File tree widget, hidden by default
+        self.file_tree_widget = FileTreeWidget(file_open_callback=self.open_file_in_editor_tab)
+        self.file_tree_widget.setVisible(False)
+        # Splitter for file tree and editor tabs
+        self.splitter = QSplitter()
+        self.splitter.setOrientation(Qt.Horizontal)
+        self.splitter.addWidget(self.file_tree_widget)
+        self.splitter.addWidget(self.tabs)
+        self.splitter.setStretchFactor(1, 1)
+        self.splitter.setSizes([0, 1])
+        self.setCentralWidget(self.splitter)
         self.create_menu_bar()
 
+    def open_file_in_editor_tab(self, file_path):
+        # Only open if not already open, otherwise switch tab
+        for i in range(self.tabs.count()):
+            tab = self.tabs.widget(i)
+            if hasattr(tab, "_file_path") and tab._file_path == file_path:
+                self.tabs.setCurrentIndex(i)
+                return
+        try:
+            with open(file_path, "r", encoding="utf-8") as f:
+                content = f.read()
+            title = os.path.basename(file_path)
+            self.tabs.add_editor_tab(title=title, content=content, font=self.current_font,
+                                    numberline_on_left=self.numberline_on_left, file_path=file_path)
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to open file: {str(e)}")
+
     def add_new_tab(self, title="Untitled", content=""):
-        editor_tab = EditorTabWidget(font=self.current_font, numberline_on_left=self.numberline_on_left)
-        editor_tab.editor.setPlainText(content)
-        index = self.tabs.addTab(editor_tab, title)
-        self.tabs.setCurrentIndex(index)
-        editor_tab.numberline.setVisible(self.show_numberline)
-        editor_tab.editor.textChanged.connect(editor_tab.numberline.update)
-        editor_tab.editor.cursorPositionChanged.connect(editor_tab.numberline.update)
+        self.tabs.add_editor_tab(title=title, content=content, font=self.current_font, numberline_on_left=self.numberline_on_left)
+
+    def add_file_explorer_tab(self):
+        self.tabs.add_file_explorer_tab()
 
     def close_tab(self, index):
-        self.tabs.removeTab(index)
+        self.tabs.close_tab(index)
+
+    def toggle_file_tree(self):
+        self.filetree_visible = not self.filetree_visible
+        self.file_tree_widget.setVisible(self.filetree_visible)
+        if self.filetree_visible:
+            self.splitter.setSizes([200, 1200])
+        else:
+            self.splitter.setSizes([0, 1])
 
     def create_menu_bar(self):
         menu_bar = self.menuBar()
@@ -298,6 +397,7 @@ class TextEditor(QMainWindow):
         file_menu.addAction("Dublicate File", self.duplicate_file)
         file_menu.addSeparator()
         file_menu.addAction("New Tab", lambda: self.add_new_tab())
+        file_menu.addAction("New File Explorer Tab", self.add_file_explorer_tab)
         file_menu.addAction("Close Tab", lambda: self.close_tab(self.tabs.currentIndex()))
 
         edit_menu = menu_bar.addMenu("Edit")
@@ -314,6 +414,12 @@ class TextEditor(QMainWindow):
         checkpoints_menu.addAction("Go to Checkpoint")
 
         view_menu = menu_bar.addMenu("View")
+        # --- Rename "Toggle File Menu" to "Toggle File Tree" and link to file tree toggle
+        toggle_filetree_action = QAction("Toggle File Tree", self)
+        toggle_filetree_action.setCheckable(True)
+        toggle_filetree_action.setChecked(self.filetree_visible)
+        toggle_filetree_action.triggered.connect(self.toggle_file_tree)
+        view_menu.addAction(toggle_filetree_action)
         toggle_numberline_action = QAction("Toggle Number Line", self)
         toggle_numberline_action.setCheckable(True)
         toggle_numberline_action.setChecked(self.show_numberline)
@@ -323,7 +429,6 @@ class TextEditor(QMainWindow):
         rotate_numberline_action.triggered.connect(self.rotate_number_line)
         view_menu.addAction(rotate_numberline_action)
         view_menu.addAction("Toggle Minimap", self.toggle_minimap)
-        view_menu.addAction("Toggle File Menu")
         split_screen_menu = view_menu.addMenu("Split Screen")
         Themes_screen_menu = view_menu.addMenu("Themes")
         Themes_screen_menu.addAction("White Mode", self.set_light_theme)
@@ -404,7 +509,7 @@ class TextEditor(QMainWindow):
                 "All Files (*);;Text Files (*.txt);;Python Files (*.py)"
             )
             if file_path:
-                with open(file_path, 'w') as f:
+                with open(file_path, 'w', encoding='utf-8') as f:
                     f.write("")
                 self.add_new_tab(title=os.path.basename(file_path))
         except Exception as e:
@@ -413,19 +518,17 @@ class TextEditor(QMainWindow):
     def open_file(self):
         file_name, _ = QFileDialog.getOpenFileName(self, "Open File")
         if file_name:
-            try:
-                with open(file_name, 'r') as f:
-                    content = f.read()
-                self.add_new_tab(title=os.path.basename(file_name), content=content)
-            except Exception as e:
-                QMessageBox.critical(self, "Error", f"Failed to open file: {str(e)}")
+            self.open_file_in_editor_tab(file_name)
 
     def save_file(self):
         current_widget = self.tabs.currentWidget()
         if not current_widget:
             return
-        editor = current_widget.editor
-        content = editor.toPlainText()
+        if hasattr(current_widget, 'editor'):
+            editor = current_widget.editor
+            content = editor.toPlainText()
+        else:
+            return  # FileExplorer tab
 
         file_path, _ = QFileDialog.getSaveFileName(
             self, "Save File", "",
@@ -434,9 +537,11 @@ class TextEditor(QMainWindow):
 
         if file_path:
             try:
-                with open(file_path, 'w') as f:
+                with open(file_path, 'w', encoding='utf-8') as f:
                     f.write(content)
                 self.tabs.setTabText(self.tabs.currentIndex(), os.path.basename(file_path))
+                # Optionally set the file path on the tab for duplicate prevention
+                current_widget._file_path = file_path
             except Exception as e:
                 QMessageBox.critical(self, "Error", f"Save failed: {str(e)}")
 
@@ -446,6 +551,11 @@ class TextEditor(QMainWindow):
             return
 
         current_widget = self.tabs.widget(current_index)
+        # Don't allow duplicating a File Explorer or File Tree tab
+        if not hasattr(current_widget, "editor"):
+            QMessageBox.warning(self, "Warning", "Cannot duplicate this tab")
+            return
+
         editor = current_widget.editor
         content = editor.toPlainText()
         original_name = self.tabs.tabText(current_index)
@@ -466,7 +576,7 @@ class TextEditor(QMainWindow):
             counter += 1
 
         try:
-            with open(new_name, 'w') as f:
+            with open(new_name, 'w', encoding='utf-8') as f:
                 f.write(content)
             self.add_new_tab(title=os.path.basename(new_name), content=content)
         except Exception as e:
@@ -512,7 +622,10 @@ class TextEditor(QMainWindow):
                 tab.setFont(font)
 
 if __name__ == '__main__':
-    app = QApplication(sys.argv)
-    window = TextEditor()
-    window.show()
-    sys.exit(app.exec_())
+    try:
+        app = QApplication(sys.argv)
+        window = TextEditor()
+        window.show()
+        sys.exit(app.exec_())
+    except Exception as exc:
+        print('An error occurred while running the application:', exc)
