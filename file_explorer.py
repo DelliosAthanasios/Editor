@@ -4,14 +4,19 @@ import platform
 import tempfile
 import subprocess
 import json
-from collections import deque
+import hashlib
+import threading
+import zipfile
+import tarfile
+from collections import deque, defaultdict
+
 from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QTreeView, QFileSystemModel, QVBoxLayout, QWidget,
     QStatusBar, QPushButton, QLineEdit, QLabel, QHBoxLayout, QFileDialog,
     QTabWidget, QListWidget, QListWidgetItem, QSplitter, QMessageBox, QMenu, QAction,
     QInputDialog, QDialog, QFormLayout, QComboBox, QCheckBox, QDialogButtonBox, QSpinBox,
     QKeySequenceEdit, QShortcut, QAbstractItemView, QStyleFactory, QSizePolicy, QTextEdit, QPlainTextEdit,
-    QGroupBox, QFrame, QGridLayout
+    QGroupBox, QFrame, QGridLayout, QProgressDialog
 )
 from PyQt5.QtCore import QDir, Qt, QSettings, QSortFilterProxyModel, QFileSystemWatcher, QModelIndex, pyqtSignal, QTimer
 from PyQt5.QtGui import QFont, QIcon, QKeySequence, QColor, QPalette, QPixmap
@@ -191,6 +196,211 @@ class PreviewDialog(QDialog):
         btn.clicked.connect(self.accept)
         layout.addWidget(btn)
 
+# -------- Duplicate File Finder Dialog --------
+
+class DuplicateFinderDialog(QDialog):
+    def __init__(self, root_path, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Duplicate File Finder")
+        self.setMinimumSize(700, 500)
+        self.layout = QVBoxLayout(self)
+        self.result_list = QListWidget()
+        self.layout.addWidget(self.result_list)
+        self.duplicates = []
+        # Options
+        option_layout = QHBoxLayout()
+        self.criteria_combo = QComboBox()
+        self.criteria_combo.addItems(["Name", "Size", "Content Hash"])
+        self.criteria_combo.setToolTip("Choose comparison method")
+        option_layout.addWidget(QLabel("Scan by:"))
+        option_layout.addWidget(self.criteria_combo)
+        self.scan_btn = QPushButton("Scan")
+        self.scan_btn.clicked.connect(lambda: self.start_scan(root_path))
+        option_layout.addWidget(self.scan_btn)
+        self.layout.addLayout(option_layout)
+        # Remove button
+        self.remove_btn = QPushButton("Delete Selected Duplicate(s)")
+        self.remove_btn.clicked.connect(self.remove_selected_duplicates)
+        self.layout.addWidget(self.remove_btn)
+        self.progress = QProgressDialog("Scanning...", "Cancel", 0, 100, self)
+        self.progress.setAutoClose(True)
+        self.progress.setAutoReset(True)
+        self.progress.close()
+
+    def start_scan(self, root_path):
+        self.result_list.clear()
+        self.duplicates.clear()
+        criteria = self.criteria_combo.currentText()
+        self.progress.setLabelText("Scanning for duplicates...")
+        self.progress.setValue(0)
+        self.progress.show()
+        self.thread = threading.Thread(target=self.scan_duplicates, args=(root_path, criteria))
+        self.thread.start()
+
+    def scan_duplicates(self, root_path, criteria):
+        files_by_key = defaultdict(list)
+        total_files = 0
+        filepaths = []
+        for base, _, files in os.walk(root_path):
+            for f in files:
+                path = os.path.join(base, f)
+                if os.path.isfile(path):
+                    filepaths.append(path)
+        total_files = len(filepaths)
+        for idx, path in enumerate(filepaths):
+            if criteria == "Name":
+                key = os.path.basename(path)
+            elif criteria == "Size":
+                try:
+                    key = os.path.getsize(path)
+                except Exception:
+                    key = None
+            else:  # Content Hash
+                try:
+                    h = hashlib.sha256()
+                    with open(path, "rb") as f:
+                        while True:
+                            data = f.read(8192)
+                            if not data:
+                                break
+                            h.update(data)
+                    key = h.hexdigest()
+                except Exception:
+                    key = None
+            if key is not None:
+                files_by_key[key].append(path)
+            pct = int((idx + 1) / total_files * 100) if total_files else 100
+            QTimer.singleShot(0, lambda pct=pct: self.progress.setValue(pct))
+        # Gather duplicates
+        for key, files in files_by_key.items():
+            if len(files) > 1:
+                self.duplicates.append(files)
+        # Update UI
+        QTimer.singleShot(0, self.show_duplicates)
+
+    def show_duplicates(self):
+        self.result_list.clear()
+        for group in self.duplicates:
+            self.result_list.addItem("---- Duplicates ----")
+            for f in group:
+                self.result_list.addItem(f)
+        self.progress.setValue(100)
+        self.progress.close()
+        if not self.duplicates:
+            QMessageBox.information(self, "No Duplicates", "No duplicate files found.")
+
+    def remove_selected_duplicates(self):
+        items = self.result_list.selectedItems()
+        if not items:
+            QMessageBox.warning(self, "No Selection", "No duplicate files selected.")
+            return
+        for item in items:
+            path = item.text()
+            if os.path.isfile(path):
+                try:
+                    os.remove(path)
+                    item.setText(f"{path} [DELETED]")
+                except Exception as e:
+                    QMessageBox.warning(self, "Delete Failed", str(e))
+
+# -------- Archive Support Dialog --------
+
+class ArchiveDialog(QDialog):
+    def __init__(self, path, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Archive Manager")
+        self.setMinimumSize(400, 200)
+        self.layout = QVBoxLayout(self)
+        self.path = path
+        ext = os.path.splitext(path)[1].lower()
+        if ext in [".zip", ".tar", ".tar.gz", ".tgz"]:
+            self.archive_type = "zip" if ext == ".zip" else "tar"
+            self.show_archive_contents()
+        else:
+            self.archive_type = None
+            self.show_create_archive_ui()
+
+    def show_archive_contents(self):
+        self.list_widget = QListWidget()
+        files = []
+        try:
+            if self.archive_type == "zip":
+                with zipfile.ZipFile(self.path, 'r') as zf:
+                    files = zf.namelist()
+            else:
+                with tarfile.open(self.path, 'r') as tf:
+                    files = tf.getnames()
+            for f in files:
+                self.list_widget.addItem(f)
+        except Exception as e:
+            self.list_widget.addItem(f"[Error reading archive: {e}]")
+        self.layout.addWidget(QLabel("Archive Contents:"))
+        self.layout.addWidget(self.list_widget)
+        extract_btn = QPushButton("Extract All")
+        extract_btn.clicked.connect(self.extract_all)
+        self.layout.addWidget(extract_btn)
+        close_btn = QPushButton("Close")
+        close_btn.clicked.connect(self.accept)
+        self.layout.addWidget(close_btn)
+
+    def show_create_archive_ui(self):
+        self.layout.addWidget(QLabel("Create Archive from this folder/file:"))
+        self.archive_name_input = QLineEdit(os.path.basename(self.path) + ".zip")
+        self.layout.addWidget(self.archive_name_input)
+        create_zip_btn = QPushButton("Create ZIP")
+        create_zip_btn.clicked.connect(lambda: self.create_archive("zip"))
+        self.layout.addWidget(create_zip_btn)
+        create_tar_btn = QPushButton("Create TAR")
+        create_tar_btn.clicked.connect(lambda: self.create_archive("tar"))
+        self.layout.addWidget(create_tar_btn)
+        close_btn = QPushButton("Close")
+        close_btn.clicked.connect(self.accept)
+        self.layout.addWidget(close_btn)
+
+    def extract_all(self):
+        extract_dir = QFileDialog.getExistingDirectory(self, "Select extraction directory")
+        if not extract_dir:
+            return
+        try:
+            if self.archive_type == "zip":
+                with zipfile.ZipFile(self.path, 'r') as zf:
+                    zf.extractall(extract_dir)
+            else:
+                with tarfile.open(self.path, 'r') as tf:
+                    tf.extractall(extract_dir)
+            QMessageBox.information(self, "Extract", f"Extracted archive to {extract_dir}")
+        except Exception as e:
+            QMessageBox.warning(self, "Extract Failed", str(e))
+
+    def create_archive(self, kind):
+        archivename = self.archive_name_input.text().strip()
+        if not archivename:
+            QMessageBox.warning(self, "Archive Name", "Please enter an archive name.")
+            return
+        savepath, _ = QFileDialog.getSaveFileName(self, "Save Archive As", archivename, "Archives (*.zip *.tar)")
+        if not savepath:
+            return
+        try:
+            if kind == "zip":
+                with zipfile.ZipFile(savepath, "w", zipfile.ZIP_DEFLATED) as zf:
+                    if os.path.isdir(self.path):
+                        for root, _, files in os.walk(self.path):
+                            for f in files:
+                                full = os.path.join(root, f)
+                                rel = os.path.relpath(full, self.path)
+                                zf.write(full, rel)
+                    else:
+                        zf.write(self.path, os.path.basename(self.path))
+            else:
+                with tarfile.open(savepath, "w") as tf:
+                    if os.path.isdir(self.path):
+                        tf.add(self.path, arcname=os.path.basename(self.path))
+                    else:
+                        tf.add(self.path, arcname=os.path.basename(self.path))
+            QMessageBox.information(self, "Archive Created", f"Archive created at {savepath}")
+        except Exception as e:
+            QMessageBox.warning(self, "Archive Error", str(e))
+
 # -------- Custom Actions --------
 
 class CustomActionDialog(QDialog):
@@ -287,7 +497,9 @@ class SettingsDialog(QDialog):
             "Toggle Details": "Ctrl+D",
             "Zoom In": "Ctrl+=",
             "Zoom Out": "Ctrl+-",
-            "Preview File": "Space"
+            "Preview File": "Space",
+            "Back": "Alt+Left",
+            "Forward": "Alt+Right"
         }
         if shortcuts:
             self.default_shortcuts.update(shortcuts)
@@ -372,7 +584,7 @@ class CloudStorageDialog(QDialog):
 # -------- File Explorer Tab --------
 
 class FileTab(QWidget):
-    def __init__(self, parent, path, settings, watcher, preview_callback=None, recent_callback=None, plugin_manager=None):
+    def __init__(self, parent, path, settings, watcher, preview_callback=None, recent_callback=None, plugin_manager=None, notify_callback=None):
         super().__init__(parent)
         self.parent_window = parent
         self.settings = settings
@@ -380,6 +592,11 @@ class FileTab(QWidget):
         self.preview_callback = preview_callback
         self.recent_callback = recent_callback
         self.plugin_manager = plugin_manager
+        self.notify_callback = notify_callback
+
+        # Folder navigation history
+        self.history = []
+        self.history_index = -1
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -391,7 +608,6 @@ class FileTab(QWidget):
         # File tree
         self.tree = QTreeView()
         self.tree.setModel(self.proxy)
-        self.tree.setRootIndex(self.proxy.mapFromSource(self.model.index(path)))
         self.tree.setFont(QFont("Fira Code", int(self.settings.value("fontsize", 12))))
         self.tree.setSortingEnabled(True)
         col = int(self.settings.value("sort_col", 0))
@@ -418,6 +634,7 @@ class FileTab(QWidget):
         self.update_columns()
         self.update_hidden()
         self.install_file_watcher(path)
+        self.navigate_to_path(path, record_history=True)
 
     def install_file_watcher(self, path):
         if self.settings.value("auto_refresh", "true") == "true":
@@ -425,6 +642,9 @@ class FileTab(QWidget):
                 self.watcher.addPath(path)
                 self.watcher.directoryChanged.connect(self.on_directory_changed)
                 self.watcher.fileChanged.connect(self.on_directory_changed)
+                if self.notify_callback:
+                    self.watcher.directoryChanged.connect(lambda p: self.notify_callback(f"Directory changed: {p}"))
+                    self.watcher.fileChanged.connect(lambda p: self.notify_callback(f"File changed: {p}"))
             except Exception:
                 pass
 
@@ -460,10 +680,16 @@ class FileTab(QWidget):
         preview_action = QAction("Preview")
         preview_action.triggered.connect(lambda: self.preview_callback(path))
         menu.addAction(preview_action)
+        archive_action = QAction("Archive Support")
+        archive_action.triggered.connect(lambda: self.parent_window.open_archive_manager(path))
+        menu.addAction(archive_action)
+        if os.path.isdir(path):
+            dup_action = QAction("Find Duplicates in Folder")
+            dup_action.triggered.connect(lambda: self.parent_window.open_duplicate_finder(path))
+            menu.addAction(dup_action)
         custom_action = QAction("Custom Command...")
         custom_action.triggered.connect(lambda: self.parent_window.run_custom_action(path))
         menu.addAction(custom_action)
-        # Plugin actions
         if self.plugin_manager:
             plugin_actions = self.plugin_manager.get_plugin_actions({"path": path})
             for act in plugin_actions:
@@ -491,33 +717,53 @@ class FileTab(QWidget):
         src_idx = self.proxy.mapToSource(index)
         path = self.model.filePath(src_idx)
         if os.path.isdir(path):
-            self.tree.setRootIndex(self.proxy.mapFromSource(self.model.index(path)))
-            self.parent_window.browse_input.setText(path)
+            self.navigate_to_path(path, record_history=True)
+            if hasattr(self.parent_window, "browse_input"):
+                self.parent_window.browse_input.setText(path)
             self.install_file_watcher(path)
         else:
             self.parent_window.open_file(path)
         if self.recent_callback:
             self.recent_callback(path)
 
-    def dragEnterEvent(self, event):
-        if event.mimeData().hasUrls():
-            event.acceptProposedAction()
+    def navigate_to_path(self, path, record_history=True):
+        if not os.path.exists(path):
+            return
+        # If navigating to a new path, truncate any "forward" history
+        if record_history:
+            if self.history and self.history_index >= 0 and self.history[self.history_index] == path:
+                pass
+            else:
+                if self.history_index < len(self.history) - 1:
+                    self.history = self.history[:self.history_index + 1]
+                self.history.append(path)
+                self.history_index = len(self.history) - 1
+        self.tree.setRootIndex(self.proxy.mapFromSource(self.model.index(path)))
+        if hasattr(self.parent_window, "browse_input"):
+            self.parent_window.browse_input.setText(path)
 
-    def dropEvent(self, event):
-        if event.mimeData().hasUrls():
-            dest_idx = self.tree.indexAt(event.pos())
-            dest_path = self.model.filePath(self.proxy.mapToSource(dest_idx)) if dest_idx.isValid() else self.parent_window.browse_input.text()
-            for url in event.mimeData().urls():
-                src_path = url.toLocalFile()
-                if os.path.isfile(src_path):
-                    try:
-                        import shutil
-                        shutil.copy(src_path, dest_path)
-                        self.model.setRootPath('')
-                        self.model.setRootPath(dest_path)
-                    except Exception as e:
-                        QMessageBox.warning(self, "Copy Failed", str(e))
-            event.acceptProposedAction()
+    def can_go_back(self):
+        return self.history_index > 0
+
+    def can_go_forward(self):
+        return self.history_index < len(self.history) - 1
+
+    def go_back(self):
+        if self.can_go_back():
+            self.history_index -= 1
+            self.tree.setRootIndex(self.proxy.mapFromSource(self.model.index(self.history[self.history_index])))
+            if hasattr(self.parent_window, "browse_input"):
+                self.parent_window.browse_input.setText(self.history[self.history_index])
+
+    def go_forward(self):
+        if self.can_go_forward():
+            self.history_index += 1
+            self.tree.setRootIndex(self.proxy.mapFromSource(self.model.index(self.history[self.history_index])))
+            if hasattr(self.parent_window, "browse_input"):
+                self.parent_window.browse_input.setText(self.history[self.history_index])
+
+    def current_folder(self):
+        return self.history[self.history_index] if 0 <= self.history_index < len(self.history) else QDir.rootPath()
 
 # -------- Main Window --------
 
@@ -537,7 +783,6 @@ class FileExplorer(QMainWindow):
         self.shortcuts = self.load_shortcuts()
         self.watcher = QFileSystemWatcher(self)
         self.plugin_manager = PluginManager("plugins")
-
         self.show_previews = True
         self.show_bookmarks = True
         self.show_history = True
@@ -593,6 +838,27 @@ class FileExplorer(QMainWindow):
         self.toggle_details_btn.clicked.connect(self.toggle_details_columns)
         self.toggle_details_btn.setCursor(Qt.PointingHandCursor)
         vb_layout.addWidget(self.toggle_details_btn)
+
+        self.back_btn = QPushButton("←")
+        self.back_btn.setToolTip("Go Back")
+        self.back_btn.setFixedWidth(30)
+        self.back_btn.setCursor(Qt.PointingHandCursor)
+        self.back_btn.clicked.connect(self.go_back)
+        vb_layout.addWidget(self.back_btn)
+
+        self.forward_btn = QPushButton("→")
+        self.forward_btn.setToolTip("Go Forward")
+        self.forward_btn.setFixedWidth(30)
+        self.forward_btn.setCursor(Qt.PointingHandCursor)
+        self.forward_btn.clicked.connect(self.go_forward)
+        vb_layout.addWidget(self.forward_btn)
+
+        self.refresh_btn = QPushButton("⟳")
+        self.refresh_btn.setToolTip("Refresh")
+        self.refresh_btn.setFixedWidth(30)
+        self.refresh_btn.setCursor(Qt.PointingHandCursor)
+        self.refresh_btn.clicked.connect(self.refresh_current_tab)
+        vb_layout.addWidget(self.refresh_btn)
 
         view_box.setLayout(vb_layout)
         controls_grid.addWidget(view_box, 0, 0)
@@ -735,11 +1001,8 @@ class FileExplorer(QMainWindow):
         self.apply_theme()
         self.setup_shortcuts()
         self.update_status()
-
-        # Tabs persistence
         if self.settings.value("tabs_persistence", "false") == "true":
             QTimer.singleShot(100, self.restore_tabs)
-
         self.apply_panel_visibility()
 
     # -------- Tabs Persistence --------
@@ -765,7 +1028,6 @@ class FileExplorer(QMainWindow):
             for path in paths:
                 self.add_new_tab(path)
 
-    # -------- Bookmarks Export/Import --------
     def export_bookmarks(self):
         export_data = {
             "bookmarks": self.bookmarks,
@@ -805,7 +1067,6 @@ class FileExplorer(QMainWindow):
         except Exception as e:
             QMessageBox.warning(self, "Import Failed", str(e))
 
-    # -------- Recent/Quick Access --------
     def add_recent(self, path):
         self.recent_list.add_recent(path)
 
@@ -816,25 +1077,27 @@ class FileExplorer(QMainWindow):
     def add_quick_access(self, path):
         self.quick_access.add_quick_access(path, self.navigate_to_path)
 
-    # -------- Tab and Navigation --------
     def add_new_tab(self, path):
-        tab = FileTab(self, path, self.settings, self.watcher, preview_callback=self.file_preview, recent_callback=self.add_recent, plugin_manager=self.plugin_manager)
-        tab_index = self.tabs.addTab(tab, os.path.basename(path) if path != QDir.rootPath() else "Home")
-        self.tabs.setCurrentIndex(tab_index)
+        tab = FileTab(self, path, self.settings, self.watcher, preview_callback=self.file_preview, recent_callback=self.add_recent, plugin_manager=self.plugin_manager, notify_callback=self.show_notification)
+        self.tabs.addTab(tab, os.path.basename(path) if path != QDir.rootPath() else "Home")
+        self.tabs.setCurrentIndex(self.tabs.count() - 1)
         self.browse_input.setText(path)
         self.update_status()
+        self.update_nav_buttons()
 
     def close_tab(self, idx):
         if self.tabs.count() > 1:
             self.tabs.removeTab(idx)
         else:
             QMessageBox.information(self, "Cannot Close", "Cannot close the last tab.")
+        self.update_nav_buttons()
 
     def previous_tab(self):
         if self.tabs.count() <= 1:
             return
         idx = self.tabs.currentIndex()
         self.tabs.setCurrentIndex((idx - 1) % self.tabs.count())
+        self.update_nav_buttons()
 
     def get_current_tab(self):
         return self.tabs.currentWidget()
@@ -846,12 +1109,13 @@ class FileExplorer(QMainWindow):
             return
         tab = self.get_current_tab()
         if tab:
-            tab.tree.setRootIndex(tab.proxy.mapFromSource(tab.model.index(path)))
+            tab.navigate_to_path(path, record_history=True)
             self.tabs.setTabText(self.tabs.currentIndex(), os.path.basename(path) if path != QDir.rootPath() else "Home")
             tab.install_file_watcher(path)
             self.add_recent(path)
             self.preview_pane.show_preview("")
         self.update_status()
+        self.update_nav_buttons()
 
     def open_folder_dialog(self):
         path = QFileDialog.getExistingDirectory(self, "Select Folder", QDir.rootPath())
@@ -863,6 +1127,45 @@ class FileExplorer(QMainWindow):
         tab = self.get_current_tab()
         if tab:
             tab.proxy.setFilterText(text)
+
+    # -------- Folder Navigation Buttons --------
+    def go_back(self):
+        tab = self.get_current_tab()
+        if tab and tab.can_go_back():
+            tab.go_back()
+            self.browse_input.setText(tab.current_folder())
+            self.tabs.setTabText(self.tabs.currentIndex(), os.path.basename(tab.current_folder()) if tab.current_folder() != QDir.rootPath() else "Home")
+            self.update_status()
+            self.update_nav_buttons()
+
+    def go_forward(self):
+        tab = self.get_current_tab()
+        if tab and tab.can_go_forward():
+            tab.go_forward()
+            self.browse_input.setText(tab.current_folder())
+            self.tabs.setTabText(self.tabs.currentIndex(), os.path.basename(tab.current_folder()) if tab.current_folder() != QDir.rootPath() else "Home")
+            self.update_status()
+            self.update_nav_buttons()
+
+    def refresh_current_tab(self):
+        tab = self.get_current_tab()
+        if tab:
+            idx = tab.tree.rootIndex()
+            src_idx = tab.proxy.mapToSource(idx)
+            path = tab.model.filePath(src_idx)
+            tab.model.setRootPath('')
+            tab.model.setRootPath(path)
+            tab.navigate_to_path(path, record_history=False)
+            self.update_status()
+
+    def update_nav_buttons(self):
+        tab = self.get_current_tab()
+        if tab:
+            self.back_btn.setEnabled(tab.can_go_back())
+            self.forward_btn.setEnabled(tab.can_go_forward())
+        else:
+            self.back_btn.setEnabled(False)
+            self.forward_btn.setEnabled(False)
 
     # -------- Appearance --------
     def zoom_in(self):
@@ -1009,7 +1312,6 @@ class FileExplorer(QMainWindow):
         self.bookmark_list.setVisible(self.show_bookmarks)
         self.recent_list.setVisible(self.show_history)
         self.preview_pane.setVisible(self.show_previews)
-        # Adjust splitter sizes for a clean look
         if not self.show_bookmarks and not self.show_history:
             self.left_splitter.setSizes([0, 0])
             self.main_splitter.setSizes([0, 8, 2])
@@ -1050,12 +1352,12 @@ class FileExplorer(QMainWindow):
             tab.update_columns()
         self.setup_shortcuts()
         self.update_status()
+        self.update_nav_buttons()
 
     def open_cloud_storage(self):
         dlg = CloudStorageDialog(self)
         dlg.exec_()
 
-    # -------- Bookmarks --------
     def add_bookmark(self):
         path = self.browse_input.text().strip()
         if not os.path.exists(path):
@@ -1071,7 +1373,6 @@ class FileExplorer(QMainWindow):
         self.change_root_path()
         self.add_quick_access(path)
 
-    # -------- File Actions & Preview --------
     def open_file(self, path):
         try:
             if platform.system() == "Windows":
@@ -1175,7 +1476,25 @@ class FileExplorer(QMainWindow):
             except Exception as e:
                 QMessageBox.warning(self, "Error", str(e))
 
-    # -------- Shortcuts --------
+    def open_duplicate_finder(self, path):
+        dlg = DuplicateFinderDialog(path, self)
+        dlg.exec_()
+
+    def open_archive_manager(self, path):
+        dlg = ArchiveDialog(path, self)
+        dlg.exec_()
+
+    def show_notification(self, text):
+        self.status.showMessage(text, 5000)
+        try:
+            from PyQt5.QtWinExtras import QWinToastNotification
+            toast = QWinToastNotification()
+            toast.setTitle("File Explorer Notification")
+            toast.setText(text)
+            toast.show()
+        except Exception:
+            pass
+
     def load_shortcuts(self):
         default = {
             "New Tab": "Ctrl+T",
@@ -1192,7 +1511,9 @@ class FileExplorer(QMainWindow):
             "Toggle Details": "Ctrl+D",
             "Zoom In": "Ctrl+=",
             "Zoom Out": "Ctrl+-",
-            "Preview File": "Space"
+            "Preview File": "Space",
+            "Back": "Alt+Left",
+            "Forward": "Alt+Right"
         }
         s = {}
         for k, v in default.items():
@@ -1207,7 +1528,7 @@ class FileExplorer(QMainWindow):
         QShortcut(QKeySequence(sc["Close Tab"]), self, lambda: self.close_tab(self.tabs.currentIndex()))
         QShortcut(QKeySequence(sc["Next Tab"]), self, lambda: self.tabs.setCurrentIndex((self.tabs.currentIndex() + 1) % self.tabs.count()))
         QShortcut(QKeySequence(sc["Previous Tab"]), self, self.previous_tab)
-        QShortcut(QKeySequence(sc["Refresh"]), self, lambda: self.get_current_tab().model.setRootPath(self.get_current_tab().model.rootPath()))
+        QShortcut(QKeySequence(sc["Refresh"]), self, self.refresh_current_tab)
         QShortcut(QKeySequence(sc["Go Home"]), self, lambda: self.browse_input.setText(os.path.expanduser("~")) or self.change_root_path())
         QShortcut(QKeySequence(sc["Go Up"]), self, self.go_up)
         QShortcut(QKeySequence(sc["Rename"]), self, self.rename_selected)
@@ -1218,6 +1539,8 @@ class FileExplorer(QMainWindow):
         QShortcut(QKeySequence(sc["Zoom In"]), self, self.zoom_in)
         QShortcut(QKeySequence(sc["Zoom Out"]), self, self.zoom_out)
         QShortcut(QKeySequence(sc["Preview File"]), self, self.file_preview)
+        QShortcut(QKeySequence(sc["Back"]), self, self.go_back)
+        QShortcut(QKeySequence(sc["Forward"]), self, self.go_forward)
 
     def go_up(self):
         tab = self.get_current_tab()
@@ -1248,7 +1571,6 @@ class FileExplorer(QMainWindow):
                 path = tab.model.filePath(src_idx)
                 self.delete_item(path)
 
-    # -------- Status --------
     def update_status(self):
         tab = self.get_current_tab()
         if not tab:
