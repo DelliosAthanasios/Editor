@@ -1,206 +1,35 @@
 import sys
 import os
-import re
 from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QWidget, QTreeWidget, QTreeWidgetItem,
-    QVBoxLayout, QFileDialog, QPushButton, QSplitter, QHeaderView,
-    QLabel, QHBoxLayout, QMenu, QAction, QMessageBox
+    QVBoxLayout, QFileDialog, QPushButton, QHeaderView,
+    QLabel, QHBoxLayout, QMenu, QAction, QMessageBox, QLineEdit
 )
 from PyQt5.QtCore import QFileSystemWatcher, Qt, QPoint
-from PyQt5.QtGui import QFont, QColor, QIcon
+from PyQt5.QtGui import QFont
+from parsing import CodeStructureParser
 
-# --- Code Parsing with types and details ---
-class CodeStructureParser:
-    def __init__(self, language):
-        self.language = language.lower()
-
-    def parse(self, code):
-        if self.language == "python":
-            return self._parse_python(code)
-        elif self.language in ("c", "cpp", "c++"):
-            return self._parse_c_cpp(code)
-        elif self.language == "java":
-            return self._parse_java(code)
-        else:
-            return []
-
-    def _parse_python(self, code):
-        tree = []
-        class_pattern = re.compile(r"^\s*class\s+(\w+)(\(.*\))?:")
-        func_pattern = re.compile(r"^\s*def\s+(\w+)\s*\((.*?)\)")
-        variable_pattern = re.compile(r"^\s*(\w+)\s*[:=]\s*([^=]*)")
-        type_hint_pattern = re.compile(r"^\s*(\w+)\s*:\s*([\w\[\], ]+)")
-        lines = code.splitlines()
-        parents = []
-        for idx, line in enumerate(lines):
-            class_match = class_pattern.match(line)
-            func_match = func_pattern.match(line)
-            var_match = variable_pattern.match(line)
-            type_hint_match = type_hint_pattern.match(line)
-            indent = len(line) - len(line.lstrip())
-            if class_match:
-                class_name = class_match.group(1)
-                node = {'type': 'class', 'name': class_name, 'children': [], 'line': idx+1}
-                parents = [node]
-                tree.append(node)
-            elif func_match:
-                func_name = func_match.group(1)
-                params = func_match.group(2)
-                param_str = params.replace("self,", "").replace("self", "")
-                param_str = param_str.strip()
-                node = {
-                    'type': 'function',
-                    'name': func_name,
-                    'params': param_str,
-                    'children': [],
-                    'line': idx+1
-                }
-                if parents and indent > 0:
-                    parents[-1]['children'].append(node)
-                else:
-                    tree.append(node)
-            elif var_match:
-                var_name = var_match.group(1)
-                var_type = ""
-                if type_hint_match:
-                    var_type = type_hint_match.group(2).strip()
-                node = {
-                    'type': 'variable',
-                    'name': var_name,
-                    'vtype': var_type,
-                    'line': idx+1
-                }
-                if parents and indent > 0:
-                    parents[-1]['children'].append(node)
-                else:
-                    tree.append(node)
-        return tree
-
-    def _parse_c_cpp(self, code):
-        tree = []
-        class_pattern = re.compile(r"^\s*(class|struct)\s+(\w+)")
-        func_pattern = re.compile(r"^\s*([\w\<\>\*\&\s]+)\s+(\w+)\s*\(([^)]*)\)\s*\{?")
-        var_pattern = re.compile(r"^\s*([\w\<\>\*\&]+)\s+(\w+)\s*(=\s*[^;]+)?;")
-        lines = code.splitlines()
-        current_class = None
-        inside_class = False
-        for idx, line in enumerate(lines):
-            class_match = class_pattern.match(line)
-            func_match = func_pattern.match(line)
-            var_match = var_pattern.match(line)
-            if class_match:
-                class_name = class_match.group(2)
-                node = {'type': 'class', 'name': class_name, 'children': [], 'line': idx+1}
-                tree.append(node)
-                current_class = node
-                inside_class = True
-            elif func_match:
-                ret_type = func_match.group(1).strip()
-                func_name = func_match.group(2)
-                params = func_match.group(3).strip()
-                node = {
-                    'type': 'function',
-                    'name': func_name,
-                    'ret_type': ret_type,
-                    'params': params,
-                    'children': [],
-                    'line': idx+1
-                }
-                if inside_class and current_class:
-                    current_class['children'].append(node)
-                else:
-                    tree.append(node)
-            elif var_match:
-                var_type = var_match.group(1).strip()
-                var_name = var_match.group(2)
-                node = {
-                    'type': 'variable',
-                    'name': var_name,
-                    'vtype': var_type,
-                    'line': idx+1
-                }
-                if inside_class and current_class:
-                    current_class['children'].append(node)
-                else:
-                    tree.append(node)
-            if "};" in line:
-                inside_class = False
-                current_class = None
-        return tree
-
-    def _parse_java(self, code):
-        tree = []
-        class_pattern = re.compile(r"^\s*(public\s+)?(class|interface)\s+(\w+)")
-        func_pattern = re.compile(r"^\s*(public|protected|private|static|\s)+([\w\<\>\[\]]+)\s+(\w+)\s*\(([^)]*)\)\s*\{?")
-        var_pattern = re.compile(r"^\s*(public|protected|private|static|\s)+([\w\<\>\[\]]+)\s+(\w+)\s*(=\s*[^;]+)?;")
-        lines = code.splitlines()
-        current_class = None
-        inside_class = False
-        for idx, line in enumerate(lines):
-            class_match = class_pattern.match(line)
-            func_match = func_pattern.match(line)
-            var_match = var_pattern.match(line)
-            if class_match:
-                class_name = class_match.group(3)
-                node = {'type': 'class', 'name': class_name, 'children': [], 'line': idx+1}
-                tree.append(node)
-                current_class = node
-                inside_class = True
-            elif func_match:
-                ret_type = func_match.group(2).strip()
-                func_name = func_match.group(3)
-                params = func_match.group(4).strip()
-                node = {
-                    'type': 'function',
-                    'name': func_name,
-                    'ret_type': ret_type,
-                    'params': params,
-                    'children': [],
-                    'line': idx+1
-                }
-                if inside_class and current_class:
-                    current_class['children'].append(node)
-                else:
-                    tree.append(node)
-            elif var_match:
-                var_type = var_match.group(2)
-                var_name = var_match.group(3)
-                node = {
-                    'type': 'variable',
-                    'name': var_name,
-                    'vtype': var_type,
-                    'line': idx+1
-                }
-                if inside_class and current_class:
-                    current_class['children'].append(node)
-                else:
-                    tree.append(node)
-            if "}" in line and inside_class:
-                inside_class = False
-                current_class = None
-        return tree
-
-# --- UI ---
 class CodeExplorerWidget(QWidget):
     def __init__(self):
         super().__init__()
         self.setStyleSheet("""
             QWidget {
-                background: #23272e;
+                background: #181a1b;
                 color: #d4d4d4;
                 font-size: 12px;
             }
-            QTreeWidget {
-                border-radius: 6px;
-                border: 1px solid #333;
-                background: #23272e;
-                alternate-background-color: #2d323a;
-                font-size: 13px;
+            QTreeWidget, QTreeWidget::item {
+                border-radius: 3px;
+                border: 1px solid #222;
+                background: #181a1b;
+                alternate-background-color: #202325;
+                font-size: 12px;
                 show-decoration-selected: 1;
+                min-height: 18px;
             }
             QHeaderView::section {
-                background: #23272e;
-                color: #a0a0a0;
+                background: #181a1b;
+                color: #888;
                 border: none;
             }
             QTreeWidget::item:selected {
@@ -210,12 +39,20 @@ class CodeExplorerWidget(QWidget):
             QPushButton {
                 background: #3874f2;
                 color: #fff;
-                border-radius: 4px;
-                padding: 6px 12px;
+                border-radius: 2px;
+                padding: 4px 10px;
                 font-size: 12px;
             }
             QPushButton:hover { background: #1e90ff; }
-            QLabel { color: #fff; font-size: 14px; }
+            QLabel { color: #fff; font-size: 13px; }
+            QLineEdit {
+                background: #222;
+                border: 1px solid #333;
+                border-radius: 2px;
+                color: #fff;
+                padding: 3px;
+                font-size: 12px;
+            }
         """)
         layout = QVBoxLayout(self)
         # Info Bar
@@ -223,21 +60,35 @@ class CodeExplorerWidget(QWidget):
         self.fileLabel = QLabel("No file loaded")
         infoLayout.addWidget(self.fileLabel)
         self.openBtn = QPushButton("Open File")
-        self.openBtn.setMaximumWidth(100)
+        self.openBtn.setMaximumWidth(90)
         self.openBtn.clicked.connect(self.open_file)
         infoLayout.addWidget(self.openBtn)
+        self.printSrcBtn = QPushButton("Print Source")
+        self.printSrcBtn.setMaximumWidth(110)
+        self.printSrcBtn.clicked.connect(self.print_source)
+        infoLayout.addWidget(self.printSrcBtn)
         infoLayout.addStretch()
         layout.addLayout(infoLayout)
+        # Search Bar
+        searchLayout = QHBoxLayout()
+        self.searchEdit = QLineEdit()
+        self.searchEdit.setPlaceholderText("Search in code structure...")
+        self.searchEdit.textChanged.connect(self.advanced_search)
+        searchLayout.addWidget(QLabel("Search:"))
+        searchLayout.addWidget(self.searchEdit)
+        layout.addLayout(searchLayout)
         # File Tree
         self.tree = QTreeWidget()
-        self.tree.setHeaderLabels(['Code Explorer'])
+        self.tree.setHeaderLabels(['Code Structure'])
         self.tree.setAlternatingRowColors(True)
-        self.tree.setMinimumWidth(220)
-        self.tree.setMaximumWidth(420)
+        self.tree.setMinimumWidth(180)
+        self.tree.setColumnCount(1)
+        self.tree.setRootIsDecorated(True)
         self.tree.setContextMenuPolicy(Qt.CustomContextMenu)
         self.tree.customContextMenuRequested.connect(self.open_context_menu)
-        self.tree.setFont(QFont("Consolas", 11))
+        self.tree.setFont(QFont("Consolas", 10))
         self.tree.header().setSectionResizeMode(QHeaderView.Stretch)
+        self.tree.setIndentation(14)
         layout.addWidget(self.tree)
         self.setLayout(layout)
         self.file_watcher = QFileSystemWatcher()
@@ -245,11 +96,13 @@ class CodeExplorerWidget(QWidget):
         self.current_file = None
         self.current_language = "python"
         self.structure = []
+        self.full_source = ""
 
     def open_file(self):
         filename, _ = QFileDialog.getOpenFileName(
-            self, "Open Code File", "", 
-            "Code Files (*.py *.c *.cpp *.h *.hpp *.java);;All Files (*)")
+            self, "Open Code File", "",
+            "All Code Files (*.py *.c *.cpp *.h *.hpp *.java *.js *.ts *.go *.rb *.php *.cs *.kt *.swift *.rs *.scala *.pl *.lua *.hs *.dart *.m *.sh *.r *.m *.groovy *.ex *.f90 *.f95 *.f *.for *.f77 *.html *.htm *.xml *.json *.yaml *.yml *.ml *.fs *.erl *.scm *.ss *.lisp *.lsp *.ps1 *.bat *.cmd *.tcl *.css *.sass *.scss *.sql *.graphql *.gql *.cob *.cbl *.pas *.dpr *.ada *.vhd *.vhdl *.v *.sv *.jl *.cr *.nim *.asm *.s *.pro);;All Files (*)"
+        )
         if filename:
             self.load_file(filename)
             self.file_watcher.removePaths(self.file_watcher.files())
@@ -264,6 +117,7 @@ class CodeExplorerWidget(QWidget):
         try:
             with open(filename, "r", encoding="utf-8") as f:
                 code = f.read()
+            self.full_source = code
             language = self.detect_language(filename)
             self.current_language = language
             parser = CodeStructureParser(language)
@@ -277,41 +131,90 @@ class CodeExplorerWidget(QWidget):
 
     def detect_language(self, filename):
         ext = os.path.splitext(filename)[1].lower()
-        if ext == ".py":
-            return "python"
-        elif ext in (".c", ".h"):
-            return "c"
-        elif ext in (".cpp", ".hpp", ".cc", ".cxx"):
-            return "cpp"
-        elif ext == ".java":
-            return "java"
-        else:
-            return "python"  # fallback
+        extmap = {
+            # Existing
+            ".py": "python",
+            ".c": "c",
+            ".h": "c",
+            ".cpp": "cpp",
+            ".hpp": "cpp",
+            ".cc": "cpp",
+            ".cxx": "cpp",
+            ".java": "java",
+            ".js": "javascript",
+            ".ts": "typescript",
+            ".go": "go",
+            ".rb": "ruby",
+            ".php": "php",
+            ".cs": "csharp",
+            ".kt": "kotlin",
+            ".swift": "swift",
+            ".rs": "rust",
+            ".scala": "scala",
+            ".pl": "perl",
+            ".lua": "lua",
+            ".hs": "haskell",
+            ".dart": "dart",
+            ".m": "matlab",  # Could also be objective-c, but prioritize matlab for now
+            ".groovy": "groovy",
+            ".ex": "elixir",
+            ".f90": "fortran",
+            ".f95": "fortran",
+            ".f": "fortran",
+            ".for": "fortran",
+            ".f77": "fortran",
+            # Markup & Data
+            ".html": "html",
+            ".htm": "html",
+            ".xml": "xml",
+            ".json": "json",
+            ".yaml": "yaml",
+            ".yml": "yaml",
+            # Functional & Academic
+            ".ml": "ocaml",
+            ".fs": "fsharp",
+            ".erl": "erlang",
+            ".scm": "scheme",
+            ".ss": "scheme",
+            ".lisp": "commonlisp",
+            ".lsp": "commonlisp",
+            # Scripting & Automation
+            ".ps1": "powershell",
+            ".bat": "batch",
+            ".cmd": "batch",
+            ".tcl": "tcl",
+            # Web & Domain-Specific
+            ".css": "css",
+            ".sass": "sass",
+            ".scss": "scss",
+            ".sql": "sql",
+            ".graphql": "graphql",
+            ".gql": "graphql",
+            # Legacy & Industry
+            ".cob": "cobol",
+            ".cbl": "cobol",
+            ".pas": "pascal",
+            ".dpr": "pascal",
+            ".ada": "ada",
+            ".vhd": "vhdl",
+            ".vhdl": "vhdl",
+            ".v": "verilog",
+            ".sv": "verilog",
+            # Others
+            ".jl": "julia",
+            ".cr": "crystal",
+            ".nim": "nim",
+            ".asm": "assembly",
+            ".s": "assembly",
+            ".pro": "prolog",
+        }
+        return extmap.get(ext, "python")
 
     def populate_tree(self, structure):
         self.tree.clear()
         def add_items(parent, items):
             for item in items:
-                if item['type'] == 'class':
-                    icon = "📦"
-                    text = f"{icon} class {item['name']} (Ln {item['line']})"
-                elif item['type'] == 'function':
-                    icon = "ƒ"
-                    params = item.get('params', "")
-                    ret_type = item.get('ret_type', "")
-                    if ret_type:
-                        text = f"{icon} {item['name']}({params}) : {ret_type} (Ln {item['line']})"
-                    else:
-                        text = f"{icon} {item['name']}({params}) (Ln {item['line']})"
-                elif item['type'] == 'variable':
-                    icon = "𝑥"
-                    vtype = item.get('vtype', "")
-                    if vtype:
-                        text = f"{icon} {item['name']}: {vtype} (Ln {item['line']})"
-                    else:
-                        text = f"{icon} {item['name']} (Ln {item['line']})"
-                else:
-                    text = item['name']
+                text = self.node_text(item)
                 node = QTreeWidgetItem([text])
                 node.setData(0, Qt.UserRole, item.get('line', 1))
                 node.setData(0, Qt.UserRole+1, item)
@@ -319,26 +222,7 @@ class CodeExplorerWidget(QWidget):
                 if 'children' in item and item['children']:
                     add_items(node, item['children'])
         for item in structure:
-            if item['type'] == 'class':
-                icon = "📦"
-                text = f"{icon} class {item['name']} (Ln {item['line']})"
-            elif item['type'] == 'function':
-                icon = "ƒ"
-                params = item.get('params', "")
-                ret_type = item.get('ret_type', "")
-                if ret_type:
-                    text = f"{icon} {item['name']}({params}) : {ret_type} (Ln {item['line']})"
-                else:
-                    text = f"{icon} {item['name']}({params}) (Ln {item['line']})"
-            elif item['type'] == 'variable':
-                icon = "𝑥"
-                vtype = item.get('vtype', "")
-                if vtype:
-                    text = f"{icon} {item['name']}: {vtype} (Ln {item['line']})"
-                else:
-                    text = f"{icon} {item['name']} (Ln {item['line']})"
-            else:
-                text = item['name']
+            text = self.node_text(item)
             root = QTreeWidgetItem([text])
             root.setData(0, Qt.UserRole, item.get('line', 1))
             root.setData(0, Qt.UserRole+1, item)
@@ -346,6 +230,30 @@ class CodeExplorerWidget(QWidget):
             if 'children' in item and item['children']:
                 add_items(root, item['children'])
         self.tree.expandAll()
+
+    def node_text(self, item):
+        # Compact, no icons, show inheritance/membership
+        if item['type'] == 'class':
+            inh = f" : {item.get('inherits','')}" if item.get('inherits') else ""
+            members = ""
+            if item.get('members'):
+                members = f"  (members: {', '.join(item['members'])})"
+            return f"class {item['name']}{inh} (Ln {item['line']}){members}"
+        elif item['type'] == 'function':
+            params = item.get('params', "")
+            ret_type = item.get('ret_type', "")
+            if ret_type:
+                return f"{item['name']}({params}) : {ret_type} (Ln {item['line']})"
+            else:
+                return f"{item['name']}({params}) (Ln {item['line']})"
+        elif item['type'] == 'variable':
+            vtype = item.get('vtype', "")
+            if vtype:
+                return f"{item['name']}: {vtype} (Ln {item['line']})"
+            else:
+                return f"{item['name']} (Ln {item['line']})"
+        else:
+            return f"{item['type']} {item['name']} (Ln {item['line']})"
 
     def open_context_menu(self, position: QPoint):
         item = self.tree.itemAt(position)
@@ -385,6 +293,10 @@ class CodeExplorerWidget(QWidget):
                     details += f"\nReturn Type: {node_data['ret_type']}"
                 if 'vtype' in node_data:
                     details += f"\nVariable Type: {node_data['vtype']}"
+                if 'inherits' in node_data and node_data['inherits']:
+                    details += f"\nInherits: {node_data['inherits']}"
+                if 'members' in node_data and node_data['members']:
+                    details += f"\nMembers: {', '.join(node_data['members'])}"
                 QMessageBox.information(self, "Node Details", details)
             show_info.triggered.connect(show_info_func)
             menu.addAction(show_info)
@@ -397,14 +309,48 @@ class CodeExplorerWidget(QWidget):
         menu.addAction(collapse_action)
         menu.exec_(self.tree.viewport().mapToGlobal(position))
 
+    def advanced_search(self, text):
+        text = text.strip().lower()
+        self.tree.expandAll()
+        def search_tree(item):
+            match = False
+            for i in range(item.childCount()):
+                if search_tree(item.child(i)):
+                    match = True
+            item_text = item.text(0).lower()
+            if text in item_text:
+                match = True
+            item.setHidden(not match)
+            if match:
+                parent = item.parent()
+                while parent:
+                    parent.setHidden(False)
+                    parent = parent.parent()
+            return match
+        for i in range(self.tree.topLevelItemCount()):
+            search_tree(self.tree.topLevelItem(i))
+
+    def print_source(self):
+        if self.full_source:
+            print(self.full_source)
+            QMessageBox.information(self, "Print Source", "Full source code printed to standard output.")
+        else:
+            QMessageBox.warning(self, "Print Source", "No source code loaded.")
+
 class CodeExplorer(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Code Explorer")
-        self.setGeometry(100, 100, 420, 640)
+        self.setGeometry(100, 100, 400, 580)
         self.setCentralWidget(CodeExplorerWidget())
         self.setWindowIconVisible = False
-        self.setStyleSheet("QMainWindow{border-radius:12px;}")
+        self.setStyleSheet("""
+            QMainWindow {
+                background: #181a1b;
+                color: #d4d4d4;
+                border-radius: 8px;
+            }
+        """)
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
