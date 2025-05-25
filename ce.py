@@ -2,12 +2,13 @@ import sys
 import os
 from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QWidget, QTreeWidget, QTreeWidgetItem,
-    QVBoxLayout, QFileDialog, QPushButton, QHeaderView,
+    QVBoxLayout, QFileDialog, QPushButton, QSplitter, QHeaderView,
     QLabel, QHBoxLayout, QMenu, QAction, QMessageBox, QLineEdit
 )
 from PyQt5.QtCore import QFileSystemWatcher, Qt, QPoint
-from PyQt5.QtGui import QFont
-from parsing import CodeStructureParser
+from PyQt5.QtGui import QFont, QColor
+
+from parsing import CodeStructureParser  # Import moved logic here
 
 class CodeExplorerWidget(QWidget):
     def __init__(self):
@@ -55,6 +56,7 @@ class CodeExplorerWidget(QWidget):
             }
         """)
         layout = QVBoxLayout(self)
+
         # Info Bar
         infoLayout = QHBoxLayout()
         self.fileLabel = QLabel("No file loaded")
@@ -69,6 +71,7 @@ class CodeExplorerWidget(QWidget):
         infoLayout.addWidget(self.printSrcBtn)
         infoLayout.addStretch()
         layout.addLayout(infoLayout)
+
         # Search Bar
         searchLayout = QHBoxLayout()
         self.searchEdit = QLineEdit()
@@ -77,6 +80,7 @@ class CodeExplorerWidget(QWidget):
         searchLayout.addWidget(QLabel("Search:"))
         searchLayout.addWidget(self.searchEdit)
         layout.addLayout(searchLayout)
+
         # File Tree
         self.tree = QTreeWidget()
         self.tree.setHeaderLabels(['Code Structure'])
@@ -91,6 +95,7 @@ class CodeExplorerWidget(QWidget):
         self.tree.setIndentation(14)
         layout.addWidget(self.tree)
         self.setLayout(layout)
+
         self.file_watcher = QFileSystemWatcher()
         self.file_watcher.fileChanged.connect(self.reload_file)
         self.current_file = None
@@ -100,9 +105,8 @@ class CodeExplorerWidget(QWidget):
 
     def open_file(self):
         filename, _ = QFileDialog.getOpenFileName(
-            self, "Open Code File", "",
-            "All Code Files (*.py *.c *.cpp *.h *.hpp *.java *.js *.ts *.go *.rb *.php *.cs *.kt *.swift *.rs *.scala *.pl *.lua *.hs *.dart *.m *.sh *.r *.m *.groovy *.ex *.f90 *.f95 *.f *.for *.f77 *.html *.htm *.xml *.json *.yaml *.yml *.ml *.fs *.erl *.scm *.ss *.lisp *.lsp *.ps1 *.bat *.cmd *.tcl *.css *.sass *.scss *.sql *.graphql *.gql *.cob *.cbl *.pas *.dpr *.ada *.vhd *.vhdl *.v *.sv *.jl *.cr *.nim *.asm *.s *.pro);;All Files (*)"
-        )
+            self, "Open Code File", "", 
+            "Code Files (*.py *.c *.cpp *.h *.hpp *.java);;All Files (*)")
         if filename:
             self.load_file(filename)
             self.file_watcher.removePaths(self.file_watcher.files())
@@ -131,84 +135,16 @@ class CodeExplorerWidget(QWidget):
 
     def detect_language(self, filename):
         ext = os.path.splitext(filename)[1].lower()
-        extmap = {
-            # Existing
-            ".py": "python",
-            ".c": "c",
-            ".h": "c",
-            ".cpp": "cpp",
-            ".hpp": "cpp",
-            ".cc": "cpp",
-            ".cxx": "cpp",
-            ".java": "java",
-            ".js": "javascript",
-            ".ts": "typescript",
-            ".go": "go",
-            ".rb": "ruby",
-            ".php": "php",
-            ".cs": "csharp",
-            ".kt": "kotlin",
-            ".swift": "swift",
-            ".rs": "rust",
-            ".scala": "scala",
-            ".pl": "perl",
-            ".lua": "lua",
-            ".hs": "haskell",
-            ".dart": "dart",
-            ".m": "matlab",  # Could also be objective-c, but prioritize matlab for now
-            ".groovy": "groovy",
-            ".ex": "elixir",
-            ".f90": "fortran",
-            ".f95": "fortran",
-            ".f": "fortran",
-            ".for": "fortran",
-            ".f77": "fortran",
-            # Markup & Data
-            ".html": "html",
-            ".htm": "html",
-            ".xml": "xml",
-            ".json": "json",
-            ".yaml": "yaml",
-            ".yml": "yaml",
-            # Functional & Academic
-            ".ml": "ocaml",
-            ".fs": "fsharp",
-            ".erl": "erlang",
-            ".scm": "scheme",
-            ".ss": "scheme",
-            ".lisp": "commonlisp",
-            ".lsp": "commonlisp",
-            # Scripting & Automation
-            ".ps1": "powershell",
-            ".bat": "batch",
-            ".cmd": "batch",
-            ".tcl": "tcl",
-            # Web & Domain-Specific
-            ".css": "css",
-            ".sass": "sass",
-            ".scss": "scss",
-            ".sql": "sql",
-            ".graphql": "graphql",
-            ".gql": "graphql",
-            # Legacy & Industry
-            ".cob": "cobol",
-            ".cbl": "cobol",
-            ".pas": "pascal",
-            ".dpr": "pascal",
-            ".ada": "ada",
-            ".vhd": "vhdl",
-            ".vhdl": "vhdl",
-            ".v": "verilog",
-            ".sv": "verilog",
-            # Others
-            ".jl": "julia",
-            ".cr": "crystal",
-            ".nim": "nim",
-            ".asm": "assembly",
-            ".s": "assembly",
-            ".pro": "prolog",
-        }
-        return extmap.get(ext, "python")
+        if ext == ".py":
+            return "python"
+        elif ext in (".c", ".h"):
+            return "c"
+        elif ext in (".cpp", ".hpp", ".cc", ".cxx"):
+            return "cpp"
+        elif ext == ".java":
+            return "java"
+        else:
+            return "python"  # fallback
 
     def populate_tree(self, structure):
         self.tree.clear()
@@ -232,28 +168,19 @@ class CodeExplorerWidget(QWidget):
         self.tree.expandAll()
 
     def node_text(self, item):
-        # Compact, no icons, show inheritance/membership
         if item['type'] == 'class':
-            inh = f" : {item.get('inherits','')}" if item.get('inherits') else ""
-            members = ""
-            if item.get('members'):
-                members = f"  (members: {', '.join(item['members'])})"
+            inh = f" : {item['inherits']}" if item.get('inherits') else ""
+            members = f"  (members: {', '.join(item['members'])})" if item.get('members') else ""
             return f"class {item['name']}{inh} (Ln {item['line']}){members}"
         elif item['type'] == 'function':
             params = item.get('params', "")
             ret_type = item.get('ret_type', "")
-            if ret_type:
-                return f"{item['name']}({params}) : {ret_type} (Ln {item['line']})"
-            else:
-                return f"{item['name']}({params}) (Ln {item['line']})"
+            return f"{item['name']}({params}) : {ret_type} (Ln {item['line']})" if ret_type else f"{item['name']}({params}) (Ln {item['line']})"
         elif item['type'] == 'variable':
             vtype = item.get('vtype', "")
-            if vtype:
-                return f"{item['name']}: {vtype} (Ln {item['line']})"
-            else:
-                return f"{item['name']} (Ln {item['line']})"
+            return f"{item['name']}: {vtype} (Ln {item['line']})" if vtype else f"{item['name']} (Ln {item['line']})"
         else:
-            return f"{item['type']} {item['name']} (Ln {item['line']})"
+            return item['name']
 
     def open_context_menu(self, position: QPoint):
         item = self.tree.itemAt(position)
@@ -270,18 +197,14 @@ class CodeExplorerWidget(QWidget):
                 def copy_sig_func():
                     ret_type = node_data.get('ret_type', '')
                     params = node_data.get('params', '')
-                    if ret_type:
-                        sig = f"{node_data['name']}({params}) : {ret_type}"
-                    else:
-                        sig = f"{node_data['name']}({params})"
+                    sig = f"{node_data['name']}({params}) : {ret_type}" if ret_type else f"{node_data['name']}({params})"
                     QApplication.clipboard().setText(sig)
                 copy_sig.triggered.connect(copy_sig_func)
                 menu.addAction(copy_sig)
             if node_data['type'] == 'variable':
                 copy_type = QAction("Copy Variable Type", self)
                 def copy_type_func():
-                    vtype = node_data.get('vtype', '')
-                    QApplication.clipboard().setText(vtype)
+                    QApplication.clipboard().setText(node_data.get('vtype', ''))
                 copy_type.triggered.connect(copy_type_func)
                 menu.addAction(copy_type)
             show_info = QAction("Show Details", self)
@@ -300,11 +223,11 @@ class CodeExplorerWidget(QWidget):
                 QMessageBox.information(self, "Node Details", details)
             show_info.triggered.connect(show_info_func)
             menu.addAction(show_info)
-        expand_action = QAction("Expand All", self)
-        expand_action.triggered.connect(lambda: self.tree.expandAll())
-        collapse_action = QAction("Collapse All", self)
-        collapse_action.triggered.connect(lambda: self.tree.collapseAll())
         menu.addSeparator()
+        expand_action = QAction("Expand All", self)
+        collapse_action = QAction("Collapse All", self)
+        expand_action.triggered.connect(lambda: self.tree.expandAll())
+        collapse_action.triggered.connect(lambda: self.tree.collapseAll())
         menu.addAction(expand_action)
         menu.addAction(collapse_action)
         menu.exec_(self.tree.viewport().mapToGlobal(position))
