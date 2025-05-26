@@ -8,9 +8,11 @@ from PyQt5.QtWidgets import (
 )
 from PyQt5.QtGui import QFont, QPalette, QColor, QPainter, QFontMetrics, QIcon
 from PyQt5.QtCore import Qt, QTimer, QRect, QDir
-
+#import edit_actions
 # --- File Explorer integration ---
 from file_explorer import FileExplorer
+import edit_actions
+import keybinds
 
 FONT_CONFIG_PATH = "font_config.json"
 
@@ -608,6 +610,7 @@ class TextEditor(QMainWindow):
         """)
 
     def set_light_theme(self):
+        
         QApplication.setPalette(QApplication.style().standardPalette())
         self.setStyleSheet("")
 
@@ -628,6 +631,8 @@ if __name__ == '__main__':
     try:
         app = QApplication(sys.argv)
         window = TextEditor()
+        edit_actions.connect_edit_menu(window)
+        keybinds.integrate_keybinds_menu(window)
         window.show()
         sys.exit(app.exec_())
     except Exception as exc:
