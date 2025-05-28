@@ -8,11 +8,14 @@ from PyQt5.QtWidgets import (
 )
 from PyQt5.QtGui import QFont, QPalette, QColor, QPainter, QFontMetrics, QIcon
 from PyQt5.QtCore import Qt, QTimer, QRect, QDir
-#import edit_actions
+
 # --- File Explorer integration ---
 from file_explorer import FileExplorer
 import edit_actions
 import keybinds
+
+# --- Minimap integration moved to minimap.py ---
+from minimap import Minimap
 
 FONT_CONFIG_PATH = "font_config.json"
 
@@ -104,123 +107,6 @@ class NumberLine(QWidget):
                 block_number += 1
         except Exception as e:
             print("Error in NumberLine paintEvent:", e)
-
-class Minimap(QWidget):
-    def __init__(self, parent, text_widget: QTextEdit, linenumbers=None):
-        super().__init__(parent)
-        self.setFixedWidth(100)
-        self.setAutoFillBackground(True)
-        self.text_widget = text_widget
-        self.linenumbers = linenumbers
-
-        self.font_name = "Courier New"
-        self.font_size = 6
-        self.line_spacing = 9
-        self.max_line_length = 50
-        self.last_y = 0
-
-        self.setMouseTracking(True)
-
-        self.text_widget.viewport().installEventFilter(self)
-        self.text_widget.document().contentsChanged.connect(self.schedule_update)
-        self.text_widget.verticalScrollBar().valueChanged.connect(self.schedule_update)
-        self.text_widget.cursorPositionChanged.connect(self.schedule_update)
-
-        self.update_timer = QTimer()
-        self.update_timer.setSingleShot(True)
-        self.update_timer.timeout.connect(self.update_minimap)
-
-    def schedule_update(self):
-        self.update_timer.start(50)
-
-    def update_minimap(self):
-        self.update()
-
-    def paintEvent(self, event):
-        try:
-            painter = QPainter(self)
-            painter.fillRect(self.rect(), QColor("#2e2e2e"))
-
-            widget_height = self.height()
-            total_lines = self.text_widget.document().blockCount()
-            if total_lines == 0:
-                return
-
-            lines_to_render = int(widget_height / self.line_spacing)
-            sb = self.text_widget.verticalScrollBar()
-            max_scroll = sb.maximum()
-            scroll_ratio = (sb.value() / max(1, max_scroll))
-            first_visible = int(scroll_ratio * (total_lines - lines_to_render))
-            first_visible = max(0, first_visible)
-            last_visible = min(first_visible + lines_to_render, total_lines)
-            visible_lines = last_visible - first_visible
-
-            total_content_height = visible_lines * self.line_spacing
-            y_offset = max(0, (widget_height - total_content_height) // 2)
-
-            font = QFont(self.font_name, self.font_size)
-            painter.setFont(font)
-            painter.setPen(QColor("#909090"))
-
-            block = self.text_widget.document().findBlockByNumber(first_visible)
-            for idx in range(first_visible, last_visible):
-                y_pos = y_offset + (idx - first_visible) * self.line_spacing
-                text = block.text().replace('\t', '    ')[:self.max_line_length]
-                painter.drawText(2, y_pos + self.font_size, text)
-                block = block.next()
-
-            if max_scroll > 0:
-                ratio = self.text_widget.viewport().height() / max(1, self.text_widget.document().size().height() * self.text_widget.fontMetrics().height())
-                indicator_height = int(ratio * widget_height)
-                indicator_y = int(sb.value() / max(1, max_scroll) * (widget_height - indicator_height))
-                painter.setBrush(QColor(80, 80, 180, 80))
-                painter.setPen(Qt.NoPen)
-                painter.drawRect(0, indicator_y, self.width(), indicator_height)
-
-            if self.linenumbers and self.linenumbers.isVisible():
-                self.linenumbers.update()
-        except Exception as e:
-            print("Error in Minimap paintEvent:", e)
-
-    def mousePressEvent(self, event):
-        if event.button() == Qt.LeftButton:
-            self.scroll_to_click(event.y())
-
-    def mouseMoveEvent(self, event):
-        if event.buttons() & Qt.LeftButton:
-            self.on_drag(event.y())
-
-    def wheelEvent(self, event):
-        direction = -1 if event.angleDelta().y() > 0 else 1
-        sb = self.text_widget.verticalScrollBar()
-        sb.setValue(sb.value() + direction * 3)
-        self.schedule_update()
-
-    def scroll_to_click(self, y):
-        total_lines = self.text_widget.document().blockCount()
-        if total_lines == 0:
-            return
-
-        widget_height = self.height()
-        rel_y = y / max(1, widget_height)
-        sb = self.text_widget.verticalScrollBar()
-        max_scroll = sb.maximum()
-        target_scroll = int(rel_y * max_scroll)
-        sb.setValue(target_scroll)
-        self.last_y = y
-        self.schedule_update()
-
-    def on_drag(self, y):
-        sb = self.text_widget.verticalScrollBar()
-        widget_height = self.height()
-        delta = (y - self.last_y)
-        sb.setValue(sb.value() + int(delta * sb.maximum() / max(1, widget_height)))
-        self.last_y = y
-        self.schedule_update()
-
-    def eventFilter(self, obj, event):
-        self.schedule_update()
-        return super().eventFilter(obj, event)
 
 class EditorTabWidget(QWidget):
     def __init__(self, parent=None, font=None, numberline_on_left=True):
@@ -610,7 +496,6 @@ class TextEditor(QMainWindow):
         """)
 
     def set_light_theme(self):
-        
         QApplication.setPalette(QApplication.style().standardPalette())
         self.setStyleSheet("")
 
