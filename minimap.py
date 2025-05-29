@@ -1,6 +1,6 @@
-from PyQt5.QtWidgets import QWidget, QMenu, QPushButton, QHBoxLayout
-from PyQt5.QtGui import QFont, QColor, QPainter, QFontMetrics, QCursor, QMouseEvent, QIcon
-from PyQt5.QtCore import Qt, QTimer, QRect, QSize
+from PyQt5.QtWidgets import QWidget, QMenu, QPushButton
+from PyQt5.QtGui import QFont, QColor, QPainter, QFontMetrics
+from PyQt5.QtCore import Qt, QTimer
 
 class Minimap(QWidget):
     DEFAULT_WIDTH = 80
@@ -34,10 +34,12 @@ class Minimap(QWidget):
         # For zoom focus
         self.zoom_focus_y = None
 
-        # Add + and - buttons for zoom
+        # Add +, -, <-, -> buttons for zoom and resize
         self.plus_button = QPushButton("+", self)
         self.minus_button = QPushButton("-", self)
-        self._setup_zoom_buttons()
+        self.left_button = QPushButton("←", self)
+        self.right_button = QPushButton("→", self)
+        self._setup_control_buttons()
 
         self.setContextMenuPolicy(Qt.CustomContextMenu)
         self.customContextMenuRequested.connect(self.show_context_menu)
@@ -51,11 +53,9 @@ class Minimap(QWidget):
         self.update_timer.setSingleShot(True)
         self.update_timer.timeout.connect(self.update_minimap)
 
-    def _setup_zoom_buttons(self):
+    def _setup_control_buttons(self):
         btn_size = 18
-        self.plus_button.setFixedSize(btn_size, btn_size)
-        self.minus_button.setFixedSize(btn_size, btn_size)
-        self.plus_button.setStyleSheet("""
+        btn_style = """
             QPushButton {
                 background-color: #333a;
                 color: #fff;
@@ -67,45 +67,59 @@ class Minimap(QWidget):
             QPushButton:hover {
                 background-color: #4c8aff;
             }
-        """)
-        self.minus_button.setStyleSheet("""
-            QPushButton {
-                background-color: #333a;
-                color: #fff;
-                border: 1px solid #444;
-                border-radius: 9px;
-                font-weight: bold;
-                font-size: 14px;
-            }
-            QPushButton:hover {
-                background-color: #4c8aff;
-            }
-        """)
+        """
+
+        for btn in [self.plus_button, self.minus_button, self.left_button, self.right_button]:
+            btn.setFixedSize(btn_size, btn_size)
+            btn.setStyleSheet(btn_style)
+            btn.setVisible(True)  # Make sure all buttons are visible
+
         self.plus_button.setToolTip("Zoom in minimap")
         self.minus_button.setToolTip("Zoom out minimap")
+        self.left_button.setToolTip("Make Minimap Narrower")
+        self.right_button.setToolTip("Make Minimap Wider")
+
         self.plus_button.clicked.connect(self._zoom_in_button)
         self.minus_button.clicked.connect(self._zoom_out_button)
-        self.plus_button.raise_()
-        self.minus_button.raise_()
+        self.left_button.clicked.connect(self._make_narrower_button)
+        self.right_button.clicked.connect(self._make_wider_button)
+
+        for btn in [self.plus_button, self.minus_button, self.left_button, self.right_button]:
+            btn.raise_()
 
     def resizeEvent(self, event):
-        # Always keep buttons at top-right
+        # Layout buttons in a 2x2 square at the top-right
         btn_pad = 3
         btn_size = self.plus_button.height()
-        self.plus_button.move(self.width() - btn_size - btn_pad, btn_pad)
-        self.minus_button.move(self.width() - btn_size - btn_pad, btn_pad * 2 + btn_size)
+        # Position in a square:
+        # +   -
+        # ←   →
+        right = self.width() - 2 * btn_size - btn_pad * 2
+        top = btn_pad
+
+        self.plus_button.move(right, top)
+        self.minus_button.move(right + btn_size + btn_pad, top)
+        self.left_button.move(right, top + btn_size + btn_pad)
+        self.right_button.move(right + btn_size + btn_pad, top + btn_size + btn_pad)
         super().resizeEvent(event)
 
     # --- Zoom functionality ---
     def _zoom_in_button(self):
-        # Zoom at center if button pressed
         self.zoom_at_point(self.height() // 2, zoom_in=True)
 
     def _zoom_out_button(self):
         self.zoom_at_point(self.height() // 2, zoom_in=False)
 
+    # --- Resize buttons ---
+    def _make_wider_button(self):
+        self.setFixedWidth(min(self.width() + 20, self.MAX_WIDTH))
+        self.schedule_update()
+
+    def _make_narrower_button(self):
+        self.setFixedWidth(max(self.width() - 20, self.MIN_WIDTH))
+        self.schedule_update()
+
     def zoom_at_point(self, y, zoom_in=True):
-        # y: position in minimap widget where zoom is focused
         pre_ratio = self._minimap_y_to_editor_ratio(y)
         if zoom_in and self.font_size < self.MAX_FONT_SIZE:
             self.font_size += 1
@@ -131,7 +145,6 @@ class Minimap(QWidget):
         self.schedule_update()
 
     def mouseDoubleClickEvent(self, event):
-        # Double click on minimap zooms at that point
         self.zoom_at_point(event.y(), zoom_in=True)
 
     # --- Resize functionality via drag ---
@@ -147,7 +160,6 @@ class Minimap(QWidget):
             self.setCursor(Qt.SizeHorCursor)
         else:
             self.setCursor(Qt.ArrowCursor)
-        # Drag to scroll minimap
         if event.buttons() & Qt.LeftButton and not self.resizing:
             self.on_drag(event.y())
 
@@ -155,7 +167,6 @@ class Minimap(QWidget):
         margin = self.RESIZE_HANDLE_WIDTH
         if event.button() == Qt.LeftButton:
             if abs(event.x() - self.width()) < margin:
-                # Begin resizing
                 self.resizing = True
                 self.resize_start_pos = event.globalX()
                 self.resize_start_width = self.width()
@@ -185,11 +196,9 @@ class Minimap(QWidget):
         elif action == zoom_out_action:
             self._zoom_out_button()
         elif action == make_wider_action:
-            self.setFixedWidth(min(self.width() + 20, self.MAX_WIDTH))
-            self.schedule_update()
+            self._make_wider_button()
         elif action == make_narrower_action:
-            self.setFixedWidth(max(self.width() - 20, self.MIN_WIDTH))
-            self.schedule_update()
+            self._make_narrower_button()
 
     # --- Update / Redraw logic ---
     def schedule_update(self):
@@ -209,7 +218,6 @@ class Minimap(QWidget):
             if total_lines == 0:
                 return
 
-            # Calculate how many lines can fit
             lines_to_render = int(widget_height / self.line_spacing)
             sb = self.text_widget.verticalScrollBar()
             max_scroll = sb.maximum()
@@ -231,13 +239,11 @@ class Minimap(QWidget):
             for idx in range(first_visible, last_visible):
                 y_pos = y_offset + (idx - first_visible) * self.line_spacing
                 text = block.text().replace('\t', '    ')[:self.max_line_length]
-                # Centralize text horizontally
                 text_width = fm.width(text)
                 x_pos = (self.width() - text_width) // 2 if self.width() > text_width else 2
                 painter.drawText(x_pos, y_pos + fm.ascent(), text)
                 block = block.next()
 
-            # Draw visible area indicator
             if max_scroll > 0:
                 ratio = self.text_widget.viewport().height() / max(1, self.text_widget.document().size().height() * self.text_widget.fontMetrics().height())
                 indicator_height = int(ratio * widget_height)
@@ -246,7 +252,6 @@ class Minimap(QWidget):
                 painter.setPen(Qt.NoPen)
                 painter.drawRect(0, indicator_y, self.width(), indicator_height)
 
-            # Draw resize handle (like Windows)
             self._draw_resize_handle(painter)
 
             if self.linenumbers and self.linenumbers.isVisible():
@@ -256,7 +261,6 @@ class Minimap(QWidget):
             print("Error in Minimap paintEvent:", e)
 
     def _draw_resize_handle(self, painter):
-        # Draw some dots or lines at the bottom-right like Windows resize handle
         margin = 2
         handle_w = self.RESIZE_HANDLE_WIDTH
         handle_h = self.RESIZE_HANDLE_WIDTH
@@ -265,7 +269,6 @@ class Minimap(QWidget):
         painter.setPen(QColor("#888"))
         for i in range(3):
             painter.drawLine(x0 + i*2, y0 + handle_h, x0 + handle_w, y0 + i*2)
-        # Make sure mouse can reach handle for resizing
 
     # --- Minimap Navigation ---
     def scroll_to_click(self, y):
@@ -293,16 +296,12 @@ class Minimap(QWidget):
         self.schedule_update()
         return super().eventFilter(obj, event)
 
-    # --- Helper for zoom-at-point ---
     def _minimap_y_to_editor_ratio(self, y):
         widget_height = self.height()
         return y / max(1, widget_height)
 
     def _keep_viewport_centered(self, y, old_ratio):
-        # After zoom, scroll so the editor's view under 'y' remains at same place
         sb = self.text_widget.verticalScrollBar()
         max_scroll = sb.maximum()
-        widget_height = self.height()
-        # New ratio after zoom (should be same as old)
         new_scroll = int(old_ratio * max_scroll)
         sb.setValue(new_scroll)
