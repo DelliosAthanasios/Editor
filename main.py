@@ -17,6 +17,9 @@ import keybinds
 # --- Minimap integration moved to minimap.py ---
 from minimap import Minimap
 
+# --- SplitScreen integration ---
+import splitscreen
+
 FONT_CONFIG_PATH = "font_config.json"
 
 def load_font_config():
@@ -226,6 +229,7 @@ class TextEditor(QMainWindow):
         self.show_numberline = True
         self.numberline_on_left = True
         self.filetree_visible = False
+        self.theme = "dark"
         self.init_ui()
         self.set_dark_theme()
 
@@ -320,12 +324,24 @@ class TextEditor(QMainWindow):
         rotate_numberline_action.triggered.connect(self.rotate_number_line)
         view_menu.addAction(rotate_numberline_action)
         view_menu.addAction("Toggle Minimap", self.toggle_minimap)
+
+        # --- Split Screen menu with advanced split
         split_screen_menu = view_menu.addMenu("Split Screen")
+        horizontal_split_action = QAction("Horizontal Split", self)
+        horizontal_split_action.triggered.connect(self.split_horizontally)
+        split_screen_menu.addAction(horizontal_split_action)
+
+        vertical_split_action = QAction("Vertical Split", self)
+        vertical_split_action.triggered.connect(self.split_vertically)
+        split_screen_menu.addAction(vertical_split_action)
+
+        advanced_split_action = QAction("Advanced Split", self)
+        # No functionality, placeholder
+        split_screen_menu.addAction(advanced_split_action)
+
         Themes_screen_menu = view_menu.addMenu("Themes")
         Themes_screen_menu.addAction("White Mode", self.set_light_theme)
         Themes_screen_menu.addAction("Dark Mode", self.set_dark_theme)
-        split_screen_menu.addAction("Horizontal Split")
-        split_screen_menu.addAction("Vertical Split")
 
         options_menu = menu_bar.addMenu("Options")
         options_menu.addAction("Font Editor", self.font_editor)
@@ -357,6 +373,36 @@ class TextEditor(QMainWindow):
         tools_menu.addAction("Open Image")
         tools_menu.addAction("Diagramm Sketch")
         tools_menu.addAction("View Editor Source Code")
+
+    # --- Split screen logic ---
+    def split_horizontally(self):
+        self._split_tab(Qt.Vertical)
+
+    def split_vertically(self):
+        self._split_tab(Qt.Horizontal)
+
+    def _split_tab(self, orientation):
+        tab_count = self.tabs.count()
+        tab_names = []
+        possible_indexes = []
+        for i in range(tab_count):
+            widget = self.tabs.widget(i)
+            if hasattr(widget, "editor") or isinstance(widget, QSplitter):
+                tab_names.append(self.tabs.tabText(i))
+                possible_indexes.append(i)
+        if not tab_names:
+            QMessageBox.warning(self, "Warning", "No editor tab to split.")
+            return
+        if len(tab_names) == 1:
+            index = possible_indexes[0]
+            splitscreen.split_tab(self.tabs, index, orientation)
+        else:
+            # Show a themed popup to select which tab to split
+            dialog = splitscreen.SplitChoiceDialog(tab_names, theme=self.theme, parent=self)
+            if dialog.exec_() == QDialog.Accepted:
+                idx = dialog.selected_tab_index()
+                index = possible_indexes[idx]
+                splitscreen.split_tab(self.tabs, index, orientation)
 
     def trigger_undo(self):
         widget = self.tabs.currentWidget()
@@ -474,6 +520,7 @@ class TextEditor(QMainWindow):
             QMessageBox.critical(self, "Error", f"Duplication failed: {str(e)}")
 
     def set_dark_theme(self):
+        self.theme = "dark"
         dark_palette = QPalette()
         dark_palette.setColor(QPalette.Window, QColor(30, 30, 30))
         dark_palette.setColor(QPalette.WindowText, Qt.white)
@@ -496,6 +543,7 @@ class TextEditor(QMainWindow):
         """)
 
     def set_light_theme(self):
+        self.theme = "light"
         QApplication.setPalette(QApplication.style().standardPalette())
         self.setStyleSheet("")
 
