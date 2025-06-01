@@ -156,6 +156,8 @@ class CheckpointDialog(QDialog):
         self.checkpoint = checkpoint
         self.line_number = line_number if checkpoint is None else checkpoint.line_number
         self.file_path = file_path if checkpoint is None else checkpoint.file_path
+        self.name_edit = None
+        self.desc_edit = None
         self.init_ui()
         
     def init_ui(self):
@@ -167,19 +169,30 @@ class CheckpointDialog(QDialog):
         # Name input
         name_layout = QHBoxLayout()
         name_layout.addWidget(QLabel("Name:"))
-        self.name_edit = QInputDialog.getText(
+        # Get name input with error handling
+        name_default = self.checkpoint.name if self.checkpoint else f"Checkpoint {self.line_number + 1 if self.line_number is not None else ''}"
+        name_input_tuple = QInputDialog.getText(
             self, "Checkpoint Name", "Enter checkpoint name:",
-            text=self.checkpoint.name if self.checkpoint else f"Checkpoint {self.line_number + 1}"
-        )[0]
+            text=name_default
+        )
+        if name_input_tuple and len(name_input_tuple) > 0:
+            self.name_edit = name_input_tuple[0]
+        else:
+            self.name_edit = ""
         form_layout.addLayout(name_layout)
         
         # Description input
         desc_layout = QHBoxLayout()
         desc_layout.addWidget(QLabel("Description:"))
-        self.desc_edit = QInputDialog.getText(
+        desc_default = self.checkpoint.description if self.checkpoint else ""
+        desc_input_tuple = QInputDialog.getText(
             self, "Checkpoint Description", "Enter checkpoint description:",
-            text=self.checkpoint.description if self.checkpoint else ""
-        )[0]
+            text=desc_default
+        )
+        if desc_input_tuple and len(desc_input_tuple) > 0:
+            self.desc_edit = desc_input_tuple[0]
+        else:
+            self.desc_edit = ""
         form_layout.addLayout(desc_layout)
         
         layout.addLayout(form_layout)
@@ -327,3 +340,153 @@ class CheckpointManagerDialog(QDialog):
     def get_selected_checkpoint(self):
         """Get the selected checkpoint."""
         return self.selected_checkpoint
+
+# --------- Methods originally from checkpoint_methods.py, now integrated ---------
+
+class CheckpointEditorMixin:
+    """Mixin providing checkpoint-related editor methods."""
+    
+    def create_checkpoint(self):
+        """Create a checkpoint at the current cursor position."""
+        current_tab = getattr(self, 'tabs', None)
+        if current_tab is None or not hasattr(current_tab, 'currentWidget'):
+            QMessageBox.warning(self, "Warning", "No tab system found.")
+            return
+        
+        active_tab = current_tab.currentWidget()
+        if not active_tab or not hasattr(active_tab, "editor"):
+            QMessageBox.warning(self, "Warning", "No editor tab active.")
+            return
+            
+        editor = active_tab.editor
+        cursor = editor.textCursor()
+        line_number = cursor.blockNumber()
+        file_path = getattr(active_tab, "_file_path", None)
+        
+        # Create checkpoint dialog
+        dialog = CheckpointDialog(
+            self, 
+            line_number=line_number,
+            file_path=file_path
+        )
+        
+        if dialog.exec_():
+            checkpoint = dialog.get_checkpoint()
+            if checkpoint:
+                self.checkpoint_manager.add_checkpoint(checkpoint)
+                self.highlight_checkpoint(active_tab, checkpoint)
+                QMessageBox.information(
+                    self, 
+                    "Checkpoint Created", 
+                    f"Checkpoint '{checkpoint.name}' created at line {line_number + 1}."
+                )
+    
+    def highlight_checkpoint(self, tab, checkpoint):
+        """Highlight a checkpoint in the editor."""
+        if not hasattr(tab, "editor"):
+            return
+            
+        editor = tab.editor
+        format = self.checkpoint_manager.get_format_for_checkpoint(checkpoint)
+        
+        # Create a cursor at the checkpoint line
+        try:
+            block = editor.document().findBlockByNumber(checkpoint.line_number)
+            if not block or not block.isValid():
+                return
+            cursor = QTextCursor(block)
+            cursor.select(QTextCursor.LineUnderCursor)
+            cursor.setCharFormat(format)
+        except Exception as e:
+            print(f"Highlighting checkpoint failed: {e}")
+    
+    def goto_next_checkpoint(self):
+        """Go to the next checkpoint in the current file."""
+        current_tab = getattr(self, 'tabs', None)
+        if current_tab is None or not hasattr(current_tab, 'currentWidget'):
+            QMessageBox.warning(self, "Warning", "No tab system found.")
+            return
+        
+        active_tab = current_tab.currentWidget()
+        if not active_tab or not hasattr(active_tab, "editor"):
+            QMessageBox.warning(self, "Warning", "No editor tab active.")
+            return
+            
+        editor = active_tab.editor
+        cursor = editor.textCursor()
+        current_line = cursor.blockNumber()
+        file_path = getattr(active_tab, "_file_path", None)
+        
+        if not file_path:
+            QMessageBox.warning(self, "Warning", "Please save the file first.")
+            return
+            
+        next_checkpoint = self.checkpoint_manager.get_next_checkpoint(file_path, current_line)
+        if next_checkpoint:
+            self.goto_checkpoint_line(editor, next_checkpoint.line_number)
+        else:
+            QMessageBox.information(self, "No Checkpoint", "No next checkpoint found.")
+    
+    def goto_prev_checkpoint(self):
+        """Go to the previous checkpoint in the current file."""
+        current_tab = getattr(self, 'tabs', None)
+        if current_tab is None or not hasattr(current_tab, 'currentWidget'):
+            QMessageBox.warning(self, "Warning", "No tab system found.")
+            return
+        
+        active_tab = current_tab.currentWidget()
+        if not active_tab or not hasattr(active_tab, "editor"):
+            QMessageBox.warning(self, "Warning", "No editor tab active.")
+            return
+            
+        editor = active_tab.editor
+        cursor = editor.textCursor()
+        current_line = cursor.blockNumber()
+        file_path = getattr(active_tab, "_file_path", None)
+        
+        if not file_path:
+            QMessageBox.warning(self, "Warning", "Please save the file first.")
+            return
+            
+        prev_checkpoint = self.checkpoint_manager.get_prev_checkpoint(file_path, current_line)
+        if prev_checkpoint:
+            self.goto_checkpoint_line(editor, prev_checkpoint.line_number)
+        else:
+            QMessageBox.information(self, "No Checkpoint", "No previous checkpoint found.")
+    
+    def goto_checkpoint_line(self, editor, line_number):
+        """Go to a specific line in the editor."""
+        try:
+            block = editor.document().findBlockByNumber(line_number)
+            if not block or not block.isValid():
+                QMessageBox.warning(self, "Warning", "Line number out of range.")
+                return
+            cursor = QTextCursor(block)
+            editor.setTextCursor(cursor)
+            editor.centerCursor()
+        except Exception as e:
+            QMessageBox.warning(self, "Error", f"Could not go to checkpoint line: {e}")
+    
+    def open_checkpoint_manager(self):
+        """Open the checkpoint manager dialog."""
+        dialog = CheckpointManagerDialog(self, self.checkpoint_manager)
+        if dialog.exec_() and dialog.selected_checkpoint:
+            checkpoint = dialog.get_selected_checkpoint()
+            if checkpoint and checkpoint.file_path:
+                # Open the file if not already open
+                self.open_file_in_editor_tab(checkpoint.file_path)
+                
+                # Find the tab with this file
+                found_tab = False
+                for i in range(self.tabs.count()):
+                    tab = self.tabs.widget(i)
+                    if hasattr(tab, "_file_path") and tab._file_path == checkpoint.file_path:
+                        self.tabs.setCurrentIndex(i)
+                        if hasattr(tab, "editor"):
+                            self.goto_checkpoint_line(tab.editor, checkpoint.line_number)
+                        found_tab = True
+                        break
+                if not found_tab:
+                    QMessageBox.warning(self, "Warning", f"Could not find tab for file: {checkpoint.file_path}")
+
+# END OF MERGED MODULE
