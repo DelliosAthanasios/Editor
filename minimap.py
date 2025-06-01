@@ -60,7 +60,7 @@ class Minimap(QWidget):
         btn_size = 24  # Increased for easier hover
         btn_style = """
             QPushButton {
-                background-color: #333a;
+                background-color: #333333;
                 color: #fff;
                 border: 1px solid #444;
                 border-radius: 12px;

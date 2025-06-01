@@ -1216,9 +1216,11 @@ class PDFViewer(QMainWindow):
             self.bookmark_preview.tab = tab
             self.bookmark_preview.bookmarks = tab.bookmarks
             self.bookmark_preview.refresh()
-
+            
 if __name__ == "__main__":
+    
     app = QApplication(sys.argv)
     viewer = PDFViewer()
     viewer.show()
     sys.exit(app.exec_())
+    

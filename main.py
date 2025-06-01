@@ -1,24 +1,23 @@
 import sys
 import os
 import json
+import subprocess
 from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QAction, QFileDialog,
     QTextEdit, QStyleFactory, QTabWidget, QWidget, QHBoxLayout,
-    QMessageBox, QVBoxLayout, QTreeView, QFileSystemModel, QSplitter
+    QMessageBox, QVBoxLayout, QTreeView, QFileSystemModel, QSplitter, QDialog
 )
-from PyQt5.QtGui import QFont, QPalette, QColor, QPainter, QFontMetrics, QIcon
+from PyQt5.QtGui import QFont, QPalette, QColor, QPainter, QFontMetrics, QIcon, QTextCursor
 from PyQt5.QtCore import Qt, QTimer, QRect, QDir
 
-# --- File Explorer integration ---
 from file_explorer import FileExplorer
 import edit_actions
 import keybinds
-
-# --- Minimap integration moved to minimap.py ---
 from minimap import Minimap
-
-# --- SplitScreen integration ---
 import splitscreen
+import theme_manager
+from checkpoints import CheckpointManager, Checkpoint, CheckpointDialog, CheckpointManagerDialog
+from image_viewer_widget import ImageViewerWidget
 
 FONT_CONFIG_PATH = "font_config.json"
 
@@ -40,7 +39,7 @@ class NumberLine(QWidget):
     def __init__(self, editor: QTextEdit):
         super().__init__(editor)
         self.editor = editor
-        self.font = editor.font()  # Ensure font matches editor at init
+        self.font = editor.font()
         self.setFont(self.font)
         self.setMinimumWidth(self.calculate_width())
         self.editor.textChanged.connect(self.updateWidth)
@@ -69,29 +68,14 @@ class NumberLine(QWidget):
             painter.fillRect(event.rect(), QColor("#222226"))
             painter.setFont(self.font)
             fm = QFontMetrics(self.font)
-
-            # Calculate the first visible block
-            cursor = self.editor.textCursor()
             doc = self.editor.document()
-            block = doc.firstBlock()
-
-            # Get the vertical scroll bar value
             scroll_bar = self.editor.verticalScrollBar()
             scroll_value = scroll_bar.value()
-
-            # Calculate line height and visible lines
             line_height = fm.lineSpacing()
             viewport_height = self.editor.viewport().height()
-
-            # The y offset (in pixels) at which the viewport starts in the document
             y_offset = -scroll_value
-
-            # For every visible block, draw its number
             block = doc.firstBlock()
             block_number = 1
-            block_y = y_offset
-
-            # Calculate pixel offset for each block using block layout
             layout = self.editor.document().documentLayout()
             while block.isValid():
                 rect = layout.blockBoundingRect(block)
@@ -124,7 +108,7 @@ class EditorTabWidget(QWidget):
         else:
             font = self.editor.font()
         self.numberline = NumberLine(self.editor)
-        self.numberline.setFont(self.editor.font())  # Sync font immediately
+        self.numberline.setFont(self.editor.font())
         self.minimap = Minimap(self, self.editor, self.numberline)
         self.numberline_on_left = numberline_on_left
         self.update_layout()
@@ -147,7 +131,7 @@ class EditorTabWidget(QWidget):
 
     def setFont(self, font):
         self.editor.setFont(font)
-        self.numberline.setFont(font)  # Always keep in sync
+        self.numberline.setFont(font)
         self.numberline.update()
         self.editor.update()
 
@@ -156,8 +140,6 @@ class EditorTabWidget(QWidget):
         self.update_layout()
 
 class FileTreeWidget(QWidget):
-    """A simple file tree browser using QFileSystemModel and QTreeView."""
-
     def __init__(self, file_open_callback, parent=None):
         super().__init__(parent)
         self.file_open_callback = file_open_callback
@@ -192,8 +174,6 @@ class FileTreeWidget(QWidget):
         return file_path.lower().endswith(supported)
 
 class MainTabWidget(QTabWidget):
-    """Main application tab widget, supports both editors and file explorer."""
-
     def __init__(self, file_open_callback, parent=None):
         super().__init__(parent)
         self.setTabsClosable(True)
@@ -208,8 +188,28 @@ class MainTabWidget(QTabWidget):
         editor_tab.numberline.setVisible(True)
         editor_tab.editor.textChanged.connect(editor_tab.numberline.update)
         editor_tab.editor.cursorPositionChanged.connect(editor_tab.numberline.update)
-        # Optionally associate the file path with the tab
         editor_tab._file_path = file_path
+
+    def add_pdf_tab(self, file_path):
+        if not os.path.exists(file_path):
+            return False
+        try:
+            script_dir = os.path.dirname(os.path.abspath(__file__))
+            pdf_viewer_path = os.path.join(script_dir, "pdf_viewer.py")
+            subprocess.Popen(["python", pdf_viewer_path, file_path])
+            return True
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to open PDF viewer: {str(e)}")
+            return False
+
+    def add_image_tab(self, file_path):
+        if not os.path.exists(file_path):
+            return False
+        image_widget = ImageViewerWidget(self, file_path)
+        title = os.path.basename(file_path)
+        index = self.addTab(image_widget, title)
+        self.setCurrentIndex(index)
+        return True
 
     def add_file_explorer_tab(self):
         explorer = FileExplorer()
@@ -225,21 +225,107 @@ class TextEditor(QMainWindow):
         self.setWindowTitle("Third Edit")
         self.setGeometry(100, 100, 1200, 800)
         self.setStyle(QStyleFactory.create("Fusion"))
+        self.theme = "dark"
+        self.themes = theme_manager.load_themes()
         self.current_font = load_font_config()
         self.show_numberline = True
         self.numberline_on_left = True
         self.filetree_visible = False
-        self.theme = "dark"
+        self.checkpoint_manager = CheckpointManager()
+        self.music_player = None
+        self.apply_theme(self.theme)
         self.init_ui()
-        self.set_dark_theme()
+
+    def create_checkpoint(self):
+        current_tab = self.tabs.currentWidget()
+        if not current_tab or not hasattr(current_tab, "editor"):
+            QMessageBox.warning(self, "Warning", "No editor tab active.")
+            return
+        editor = current_tab.editor
+        cursor = editor.textCursor()
+        line_number = cursor.blockNumber()
+        file_path = getattr(current_tab, "_file_path", None)
+        dialog = CheckpointDialog(self, line_number=line_number, file_path=file_path)
+        if dialog.exec_():
+            checkpoint = dialog.get_checkpoint()
+            if checkpoint:
+                self.checkpoint_manager.add_checkpoint(checkpoint)
+                self.highlight_checkpoint(current_tab, checkpoint)
+                QMessageBox.information(
+                    self,
+                    "Checkpoint Created",
+                    f"Checkpoint '{checkpoint.name}' created at line {line_number + 1}."
+                )
+
+    def highlight_checkpoint(self, tab, checkpoint):
+        if not hasattr(tab, "editor"):
+            return
+        editor = tab.editor
+        format = self.checkpoint_manager.get_format_for_checkpoint(checkpoint)
+        cursor = QTextCursor(editor.document().findBlockByNumber(checkpoint.line_number))
+        cursor.select(QTextCursor.LineUnderCursor)
+        cursor.setCharFormat(format)
+
+    def goto_next_checkpoint(self):
+        current_tab = self.tabs.currentWidget()
+        if not current_tab or not hasattr(current_tab, "editor"):
+            QMessageBox.warning(self, "Warning", "No editor tab active.")
+            return
+        editor = current_tab.editor
+        cursor = editor.textCursor()
+        current_line = cursor.blockNumber()
+        file_path = getattr(current_tab, "_file_path", None)
+        if not file_path:
+            QMessageBox.warning(self, "Warning", "Please save the file first.")
+            return
+        next_checkpoint = self.checkpoint_manager.get_next_checkpoint(file_path, current_line)
+        if next_checkpoint:
+            self.goto_checkpoint_line(editor, next_checkpoint.line_number)
+        else:
+            QMessageBox.information(self, "No Checkpoint", "No next checkpoint found.")
+
+    def goto_prev_checkpoint(self):
+        current_tab = self.tabs.currentWidget()
+        if not current_tab or not hasattr(current_tab, "editor"):
+            QMessageBox.warning(self, "Warning", "No editor tab active.")
+            return
+        editor = current_tab.editor
+        cursor = editor.textCursor()
+        current_line = cursor.blockNumber()
+        file_path = getattr(current_tab, "_file_path", None)
+        if not file_path:
+            QMessageBox.warning(self, "Warning", "Please save the file first.")
+            return
+        prev_checkpoint = self.checkpoint_manager.get_prev_checkpoint(file_path, current_line)
+        if prev_checkpoint:
+            self.goto_checkpoint_line(editor, prev_checkpoint.line_number)
+        else:
+            QMessageBox.information(self, "No Checkpoint", "No previous checkpoint found.")
+
+    def goto_checkpoint_line(self, editor, line_number):
+        cursor = QTextCursor(editor.document().findBlockByNumber(line_number))
+        editor.setTextCursor(cursor)
+        editor.centerCursor()
+
+    def open_checkpoint_manager(self):
+        dialog = CheckpointManagerDialog(self, self.checkpoint_manager)
+        if dialog.exec_() and dialog.selected_checkpoint:
+            checkpoint = dialog.get_selected_checkpoint()
+            if checkpoint and checkpoint.file_path:
+                self.open_file_in_editor_tab(checkpoint.file_path)
+                for i in range(self.tabs.count()):
+                    tab = self.tabs.widget(i)
+                    if hasattr(tab, "_file_path") and tab._file_path == checkpoint.file_path:
+                        self.tabs.setCurrentIndex(i)
+                        if hasattr(tab, "editor"):
+                            self.goto_checkpoint_line(tab.editor, checkpoint.line_number)
+                        break
 
     def init_ui(self):
         self.tabs = MainTabWidget(file_open_callback=self.open_file_in_editor_tab)
         self.tabs.add_editor_tab(font=self.current_font, numberline_on_left=self.numberline_on_left)
-        # File tree widget, hidden by default
         self.file_tree_widget = FileTreeWidget(file_open_callback=self.open_file_in_editor_tab)
         self.file_tree_widget.setVisible(False)
-        # Splitter for file tree and editor tabs
         self.splitter = QSplitter()
         self.splitter.setOrientation(Qt.Horizontal)
         self.splitter.addWidget(self.file_tree_widget)
@@ -250,12 +336,19 @@ class TextEditor(QMainWindow):
         self.create_menu_bar()
 
     def open_file_in_editor_tab(self, file_path):
-        # Only open if not already open, otherwise switch tab
         for i in range(self.tabs.count()):
             tab = self.tabs.widget(i)
             if hasattr(tab, "_file_path") and tab._file_path == file_path:
                 self.tabs.setCurrentIndex(i)
                 return
+        _, ext = os.path.splitext(file_path.lower())
+        if ext == '.pdf':
+            self.tabs.add_pdf_tab(file_path)
+            return
+        image_extensions = ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.tiff', '.webp']
+        if ext in image_extensions:
+            self.tabs.add_image_tab(file_path)
+            return
         try:
             with open(file_path, "r", encoding="utf-8") as f:
                 content = f.read()
@@ -284,7 +377,6 @@ class TextEditor(QMainWindow):
 
     def create_menu_bar(self):
         menu_bar = self.menuBar()
-
         file_menu = menu_bar.addMenu("File")
         file_menu.addAction("New File", self.new_file)
         file_menu.addAction("Open File", self.open_file)
@@ -294,7 +386,6 @@ class TextEditor(QMainWindow):
         file_menu.addAction("New Tab", lambda: self.add_new_tab())
         file_menu.addAction("Open File Explorer", self.add_file_explorer_tab)
         file_menu.addAction("Close Tab", lambda: self.close_tab(self.tabs.currentIndex()))
-
         edit_menu = menu_bar.addMenu("Edit")
         edit_menu.addAction("Undo", self.trigger_undo)
         edit_menu.addAction("Redo", self.trigger_redo)
@@ -305,11 +396,11 @@ class TextEditor(QMainWindow):
         go_to_menu.addAction("Line")
         go_to_menu.addAction("Word")
         checkpoints_menu = edit_menu.addMenu("Checkpoints")
-        checkpoints_menu.addAction("Create Checkpoint")
-        checkpoints_menu.addAction("Go to Checkpoint")
-
+        checkpoints_menu.addAction("Create Checkpoint", self.create_checkpoint)
+        checkpoints_menu.addAction("Go to Next Checkpoint", self.goto_next_checkpoint)
+        checkpoints_menu.addAction("Go to Previous Checkpoint", self.goto_prev_checkpoint)
+        checkpoints_menu.addAction("Manage Checkpoints...", self.open_checkpoint_manager)
         view_menu = menu_bar.addMenu("View")
-        # --- Rename "Toggle File Menu" to "Toggle File Tree" and link to file tree toggle
         toggle_filetree_action = QAction("Toggle File Tree", self)
         toggle_filetree_action.setCheckable(True)
         toggle_filetree_action.setChecked(self.filetree_visible)
@@ -324,64 +415,51 @@ class TextEditor(QMainWindow):
         rotate_numberline_action.triggered.connect(self.rotate_number_line)
         view_menu.addAction(rotate_numberline_action)
         view_menu.addAction("Toggle Minimap", self.toggle_minimap)
-
-        # --- Split Screen menu with advanced split
+        code_explorer_action = QAction("Enable Code Explorer", self)
+        code_explorer_action.triggered.connect(self.enable_code_explorer)
+        view_menu.addAction(code_explorer_action)
         split_screen_menu = view_menu.addMenu("Split Screen")
-        horizontal_split_action = QAction("Horizontal Split", self)
-        horizontal_split_action.triggered.connect(self.split_horizontally)
-        split_screen_menu.addAction(horizontal_split_action)
-
-        vertical_split_action = QAction("Vertical Split", self)
-        vertical_split_action.triggered.connect(self.split_vertically)
-        split_screen_menu.addAction(vertical_split_action)
-
-        advanced_split_action = QAction("Advanced Split", self)
-        # No functionality, placeholder
+        advanced_split_action = QAction("Custom Split Configuration...", self)
+        advanced_split_action.triggered.connect(self.open_custom_split_dialog)
         split_screen_menu.addAction(advanced_split_action)
-
         Themes_screen_menu = view_menu.addMenu("Themes")
         Themes_screen_menu.addAction("White Mode", self.set_light_theme)
         Themes_screen_menu.addAction("Dark Mode", self.set_dark_theme)
-
+        Themes_screen_menu.addSeparator()
+        Themes_screen_menu.addAction("Theme Manager...", self.open_theme_manager)
         options_menu = menu_bar.addMenu("Options")
         options_menu.addAction("Font Editor", self.font_editor)
-        options_menu.addAction("Theme Manager")
         options_menu.addAction("Extensions")
-
         keybind_menu = menu_bar.addMenu("Keybinds")
         keybind_menu.addAction("Configure Keybinds")
         keybind_menu.addAction("Default Keybinds Map")
-
         languages_menu = menu_bar.addMenu("Languages")
         languages_menu.addAction("Syntax Options")
         languages_menu.addAction("Compilers")
-
         env_menu = menu_bar.addMenu("Environments")
         env_menu.addAction("Create Environment")
         env_menu.addAction("Configure Environment")
         env_menu.addAction("Create Custom Environment")
-
         help_menu = menu_bar.addMenu("Help")
         help_menu.addAction("Documentation")
         help_menu.addAction("Tutorial")
         help_menu.addAction("About Developer")
-
         tools_menu = menu_bar.addMenu("Tools")
         tools_menu.addAction("Process Manager")
         tools_menu.addAction("Control Panel")
-        tools_menu.addAction("Open PDF")
-        tools_menu.addAction("Open Image")
+        open_pdf_action = QAction("Open PDF", self)
+        open_pdf_action.triggered.connect(self.open_pdf_file)
+        tools_menu.addAction(open_pdf_action)
+        open_image_action = QAction("Open Image", self)
+        open_image_action.triggered.connect(self.open_image_file)
+        tools_menu.addAction(open_image_action)
         tools_menu.addAction("Diagramm Sketch")
         tools_menu.addAction("View Editor Source Code")
+        music_player_action = QAction("Music Player", self)
+        music_player_action.triggered.connect(self.open_music_player)
+        tools_menu.addAction(music_player_action)
 
-    # --- Split screen logic ---
-    def split_horizontally(self):
-        self._split_tab(Qt.Vertical)
-
-    def split_vertically(self):
-        self._split_tab(Qt.Horizontal)
-
-    def _split_tab(self, orientation):
+    def open_custom_split_dialog(self):
         tab_count = self.tabs.count()
         tab_names = []
         possible_indexes = []
@@ -391,18 +469,59 @@ class TextEditor(QMainWindow):
                 tab_names.append(self.tabs.tabText(i))
                 possible_indexes.append(i)
         if not tab_names:
-            QMessageBox.warning(self, "Warning", "No editor tab to split.")
+            QMessageBox.warning(self, "Warning", "No editor tabs available for splitting.")
             return
-        if len(tab_names) == 1:
-            index = possible_indexes[0]
-            splitscreen.split_tab(self.tabs, index, orientation)
-        else:
-            # Show a themed popup to select which tab to split
-            dialog = splitscreen.SplitChoiceDialog(tab_names, theme=self.theme, parent=self)
-            if dialog.exec_() == QDialog.Accepted:
-                idx = dialog.selected_tab_index()
-                index = possible_indexes[idx]
-                splitscreen.split_tab(self.tabs, index, orientation)
+        dialog = splitscreen.CustomSplitDialog(tab_names, theme=self.theme, parent=self)
+        if dialog.exec_() == QDialog.Accepted:
+            selected_indices = dialog.get_selected_tabs()
+            cols, rows = dialog.get_layout_config()
+            actual_indices = [possible_indexes[i] for i in selected_indices if i < len(possible_indexes)]
+            if actual_indices:
+                splitscreen.create_custom_split(self.tabs, actual_indices, cols, rows)
+            else:
+                QMessageBox.warning(self, "Warning", "No tabs selected for custom split.")
+
+    def apply_theme(self, theme_key):
+        if theme_key in self.themes:
+            theme_data = self.themes[theme_key]
+            theme_manager.apply_theme(QApplication.instance(), theme_data)
+            self.theme = theme_key
+            editor_style = theme_manager.get_editor_styles(theme_data)
+            for i in range(getattr(self, 'tabs', QTabWidget()).count()):
+                tab = self.tabs.widget(i)
+                if hasattr(tab, "editor"):
+                    tab.editor.setStyleSheet(editor_style)
+                elif isinstance(tab, QSplitter):
+                    for j in range(tab.count()):
+                        widget = tab.widget(j)
+                        if hasattr(widget, "editor"):
+                            widget.editor.setStyleSheet(editor_style)
+
+    def set_dark_theme(self):
+        self.apply_theme("dark")
+
+    def set_light_theme(self):
+        self.apply_theme("light")
+
+    def open_theme_manager(self):
+        dialog = theme_manager.ThemeManagerDialog(self, self.theme)
+        if dialog.exec_():
+            selected_theme = dialog.get_selected_theme_key()
+            if selected_theme != self.theme:
+                self.apply_theme(selected_theme)
+
+    def font_editor(self):
+        from font_editor import FontEditor
+        self.font_editor_window = FontEditor()
+        self.font_editor_window.settings_applied.connect(self.apply_font_from_editor)
+        self.font_editor_window.show()
+
+    def apply_font_from_editor(self, font):
+        self.current_font = font
+        for i in range(self.tabs.count()):
+            tab = self.tabs.widget(i)
+            if hasattr(tab, "setFont"):
+                tab.setFont(font)
 
     def trigger_undo(self):
         widget = self.tabs.currentWidget()
@@ -465,19 +584,16 @@ class TextEditor(QMainWindow):
             editor = current_widget.editor
             content = editor.toPlainText()
         else:
-            return  # FileExplorer tab
-
+            return
         file_path, _ = QFileDialog.getSaveFileName(
             self, "Save File", "",
             "All Files (*);;Text Files (*.txt);;Python Files (*.py)"
         )
-
         if file_path:
             try:
                 with open(file_path, 'w', encoding='utf-8') as f:
                     f.write(content)
                 self.tabs.setTabText(self.tabs.currentIndex(), os.path.basename(file_path))
-                # Optionally set the file path on the tab for duplicate prevention
                 current_widget._file_path = file_path
             except Exception as e:
                 QMessageBox.critical(self, "Error", f"Save failed: {str(e)}")
@@ -486,32 +602,25 @@ class TextEditor(QMainWindow):
         current_index = self.tabs.currentIndex()
         if current_index == -1:
             return
-
         current_widget = self.tabs.widget(current_index)
-        # Don't allow duplicating a File Explorer or File Tree tab
         if not hasattr(current_widget, "editor"):
             QMessageBox.warning(self, "Warning", "Cannot duplicate this tab")
             return
-
         editor = current_widget.editor
         content = editor.toPlainText()
         original_name = self.tabs.tabText(current_index)
-
         if original_name == "Untitled":
             QMessageBox.warning(self, "Warning", "Please save the file before duplicating")
             return
-
         base_path = os.path.splitext(original_name)[0]
         extension = os.path.splitext(original_name)[1] or ""
         counter = 1
         new_name = f"{base_path}_duplicate{extension}"
-
         while True:
             if not os.path.exists(new_name):
                 break
             new_name = f"{base_path}_duplicate{counter}{extension}"
             counter += 1
-
         try:
             with open(new_name, 'w', encoding='utf-8') as f:
                 f.write(content)
@@ -519,46 +628,70 @@ class TextEditor(QMainWindow):
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Duplication failed: {str(e)}")
 
-    def set_dark_theme(self):
-        self.theme = "dark"
-        dark_palette = QPalette()
-        dark_palette.setColor(QPalette.Window, QColor(30, 30, 30))
-        dark_palette.setColor(QPalette.WindowText, Qt.white)
-        dark_palette.setColor(QPalette.Base, QColor(25, 25, 25))
-        dark_palette.setColor(QPalette.AlternateBase, QColor(53, 53, 53))
-        dark_palette.setColor(QPalette.ToolTipBase, Qt.white)
-        dark_palette.setColor(QPalette.ToolTipText, Qt.white)
-        dark_palette.setColor(QPalette.Text, Qt.white)
-        dark_palette.setColor(QPalette.Button, QColor(53, 53, 53))
-        dark_palette.setColor(QPalette.ButtonText, Qt.white)
-        dark_palette.setColor(QPalette.Highlight, QColor(100, 100, 255))
-        dark_palette.setColor(QPalette.HighlightedText, Qt.black)
-        QApplication.setPalette(dark_palette)
+    def open_music_player(self):
+        try:
+            from music_player import MusicPlayerWidget
+            if not self.music_player:
+                self.music_player = QWidget()
+                self.music_player.setWindowTitle("Music Player")
+                layout = QVBoxLayout(self.music_player)
+                player_widget = MusicPlayerWidget(self.music_player)
+                layout.addWidget(player_widget)
+                self.music_player.resize(500, 400)
+            self.music_player.show()
+            self.music_player.activateWindow()
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to open Music Player: {str(e)}")
 
-        self.setStyleSheet("""
-            QMenuBar { background-color: #2b2b2b; color: white; }
-            QMenuBar::item:selected { background: #44475a; }
-            QMenu { background-color: #2b2b2b; color: white; }
-            QMenu::item:selected { background-color: #44475a; }
-        """)
+    def open_pdf_file(self):
+        file_path, _ = QFileDialog.getOpenFileName(
+            self, "Open PDF File", "", "PDF Files (*.pdf);;All Files (*)"
+        )
+        if file_path:
+            try:
+                script_dir = os.path.dirname(os.path.abspath(__file__))
+                pdf_viewer_path = os.path.join(script_dir, "pdf_viewer.py")
+                subprocess.Popen(["python", pdf_viewer_path, file_path])
+            except Exception as e:
+                QMessageBox.critical(self, "Error", f"Failed to open PDF viewer: {str(e)}")
 
-    def set_light_theme(self):
-        self.theme = "light"
-        QApplication.setPalette(QApplication.style().standardPalette())
-        self.setStyleSheet("")
+    def open_image_file(self):
+        file_path, _ = QFileDialog.getOpenFileName(
+            self, "Open Image File", "",
+            "Image Files (*.png *.jpg *.jpeg *.bmp *.gif *.tiff *.webp);;All Files (*)"
+        )
+        if file_path:
+            self.tabs.add_image_tab(file_path)
 
-    def font_editor(self):
-        from font_editor import FontEditor
-        self.font_editor_window = FontEditor()
-        self.font_editor_window.settings_applied.connect(self.apply_font_from_editor)
-        self.font_editor_window.show()
-
-    def apply_font_from_editor(self, font):
-        self.current_font = font
-        for i in range(self.tabs.count()):
-            tab = self.tabs.widget(i)
-            if hasattr(tab, "setFont"):
-                tab.setFont(font)
+    def enable_code_explorer(self):
+        current_tab = self.tabs.currentWidget()
+        if not current_tab or not hasattr(current_tab, "editor"):
+            QMessageBox.warning(self, "Warning", "No editor tab active.")
+            return
+        file_path = getattr(current_tab, "_file_path", None)
+        content = current_tab.editor.toPlainText()
+        if not content:
+            QMessageBox.warning(self, "Warning", "No content to analyze.")
+            return
+        temp_file = None
+        if not file_path:
+            import tempfile
+            fd, temp_file = tempfile.mkstemp(suffix='.py')
+            os.close(fd)
+            with open(temp_file, 'w', encoding='utf-8') as f:
+                f.write(content)
+            file_path = temp_file
+        try:
+            script_dir = os.path.dirname(os.path.abspath(__file__))
+            ce_path = os.path.join(script_dir, "ce.py")
+            subprocess.Popen(["python", ce_path, file_path])
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to launch Code Explorer: {str(e)}")
+        if temp_file:
+            try:
+                QTimer.singleShot(5000, lambda: os.remove(temp_file) if os.path.exists(temp_file) else None)
+            except:
+                pass
 
 if __name__ == '__main__':
     try:
