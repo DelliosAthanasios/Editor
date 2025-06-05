@@ -19,6 +19,9 @@ import theme_manager
 from checkpoints import CheckpointManager, Checkpoint, CheckpointDialog, CheckpointManagerDialog
 from image_viewer_widget import ImageViewerWidget
 
+from pdf_viewer import PDFViewer
+from ce import CodeExplorerWidget  # Make sure ce.py provides: CodeExplorerWidget(path, parent=None)
+
 FONT_CONFIG_PATH = "font_config.json"
 
 def load_font_config():
@@ -34,6 +37,23 @@ def load_font_config():
     except Exception as e:
         print("Error loading font config:", e)
     return QFont("Fira Code", 12)
+
+def set_dark_palette(app):
+    palette = QPalette()
+    palette.setColor(QPalette.Window, QColor(30, 30, 30))
+    palette.setColor(QPalette.WindowText, Qt.white)
+    palette.setColor(QPalette.Base, QColor(40, 40, 40))
+    palette.setColor(QPalette.AlternateBase, QColor(30, 30, 30))
+    palette.setColor(QPalette.ToolTipBase, Qt.white)
+    palette.setColor(QPalette.ToolTipText, Qt.white)
+    palette.setColor(QPalette.Text, Qt.white)
+    palette.setColor(QPalette.Button, QColor(45, 45, 45))
+    palette.setColor(QPalette.ButtonText, Qt.white)
+    palette.setColor(QPalette.BrightText, Qt.red)
+    palette.setColor(QPalette.Link, QColor(42, 130, 218))
+    palette.setColor(QPalette.Highlight, QColor(42, 130, 218))
+    palette.setColor(QPalette.HighlightedText, Qt.black)
+    app.setPalette(palette)
 
 class NumberLine(QWidget):
     def __init__(self, editor: QTextEdit):
@@ -194,13 +214,32 @@ class MainTabWidget(QTabWidget):
         if not os.path.exists(file_path):
             return False
         try:
-            script_dir = os.path.dirname(os.path.abspath(__file__))
-            pdf_viewer_path = os.path.join(script_dir, "pdf_viewer.py")
-            subprocess.Popen(["python", pdf_viewer_path, file_path])
+            pdf_viewer = PDFViewer()
+            pdf_viewer.add_pdf_tab(file_path)
+            title = os.path.basename(file_path)
+            index = self.addTab(pdf_viewer, title)
+            self.setCurrentIndex(index)
+            pdf_viewer._file_path = file_path
             return True
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Failed to open PDF viewer: {str(e)}")
             return False
+
+    def add_code_explorer_tab(self, file_path):
+        # Avoid adding duplicate tabs for the same file
+        for i in range(self.count()):
+            widget = self.widget(i)
+            if hasattr(widget, "_ce_file_path") and widget._ce_file_path == file_path:
+                self.setCurrentIndex(i)
+                return
+        try:
+            ce_widget = CodeExplorerWidget(file_path, parent=self)  # <-- fix here
+            ce_widget._ce_file_path = file_path
+            title = f"Code Explorer: {os.path.basename(file_path)}"
+            index = self.addTab(ce_widget, title)
+            self.setCurrentIndex(index)
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to load Code Explorer: {str(e)}")
 
     def add_image_tab(self, file_path):
         if not os.path.exists(file_path):
@@ -338,7 +377,8 @@ class TextEditor(QMainWindow):
     def open_file_in_editor_tab(self, file_path):
         for i in range(self.tabs.count()):
             tab = self.tabs.widget(i)
-            if hasattr(tab, "_file_path") and tab._file_path == file_path:
+            tab_file_path = getattr(tab, "_file_path", None)
+            if tab_file_path == file_path:
                 self.tabs.setCurrentIndex(i)
                 return
         _, ext = os.path.splitext(file_path.lower())
@@ -648,12 +688,7 @@ class TextEditor(QMainWindow):
             self, "Open PDF File", "", "PDF Files (*.pdf);;All Files (*)"
         )
         if file_path:
-            try:
-                script_dir = os.path.dirname(os.path.abspath(__file__))
-                pdf_viewer_path = os.path.join(script_dir, "pdf_viewer.py")
-                subprocess.Popen(["python", pdf_viewer_path, file_path])
-            except Exception as e:
-                QMessageBox.critical(self, "Error", f"Failed to open PDF viewer: {str(e)}")
+            self.tabs.add_pdf_tab(file_path)
 
     def open_image_file(self):
         file_path, _ = QFileDialog.getOpenFileName(
@@ -682,11 +717,9 @@ class TextEditor(QMainWindow):
                 f.write(content)
             file_path = temp_file
         try:
-            script_dir = os.path.dirname(os.path.abspath(__file__))
-            ce_path = os.path.join(script_dir, "ce.py")
-            subprocess.Popen(["python", ce_path, file_path])
+            self.tabs.add_code_explorer_tab(file_path)
         except Exception as e:
-            QMessageBox.critical(self, "Error", f"Failed to launch Code Explorer: {str(e)}")
+            QMessageBox.critical(self, "Error", f"Failed to load Code Explorer: {str(e)}")
         if temp_file:
             try:
                 QTimer.singleShot(5000, lambda: os.remove(temp_file) if os.path.exists(temp_file) else None)
@@ -696,6 +729,8 @@ class TextEditor(QMainWindow):
 if __name__ == '__main__':
     try:
         app = QApplication(sys.argv)
+        set_dark_palette(app)  # Enforce dark at Qt level (fixes white flash)
+        app.setStyle(QStyleFactory.create("Fusion"))
         window = TextEditor()
         edit_actions.connect_edit_menu(window)
         keybinds.integrate_keybinds_menu(window)
