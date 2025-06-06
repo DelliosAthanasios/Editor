@@ -2,6 +2,17 @@ from PyQt5.QtWidgets import QWidget, QMenu, QPushButton, QApplication, QToolTip
 from PyQt5.QtGui import QFont, QColor, QPainter, QFontMetrics
 from PyQt5.QtCore import Qt, QTimer
 
+def get_contrasting_text_color(bg_color: QColor):
+    # Calculate perceived luminance and return black or white for good contrast
+    if not isinstance(bg_color, QColor):
+        bg_color = QColor(bg_color)
+    r = bg_color.red()
+    g = bg_color.green()
+    b = bg_color.blue()
+    # Standard luminance formula
+    luminance = 0.299 * r + 0.587 * g + 0.114 * b
+    return "#000" if luminance > 180 else "#fff"
+
 class Minimap(QWidget):
     DEFAULT_WIDTH = 80
     MIN_WIDTH = 40
@@ -61,27 +72,51 @@ class Minimap(QWidget):
         self.bg_color = QColor(editor_colors.get("background", "#2e2e2e"))
         self.text_color = QColor(editor_colors.get("line_number_foreground", "#909090"))
         self.indicator_color = QColor(editor_colors.get("selection_background", "#4c8aff"))
+
+        # Update button style for visibility and theme
+        self._update_button_styles()
         self.update()
 
-    def _setup_control_buttons(self):
-        btn_size = 24
-        btn_style = """
-            QPushButton {
-                background-color: #333333;
-                color: #fff;
-                border: 1px solid #444;
+    def _update_button_styles(self):
+        # Always use a border to ensure visibility, and contrasting text color
+        # Try to use a slightly brighter/darker version of the editor bg for the button bg
+        base_bg = self.theme_data.get("editor", {}).get("background", "#2e2e2e")
+        base_bg_qcolor = QColor(base_bg)
+        # Adjust background for button to ensure it stands out
+        if base_bg_qcolor.lightness() > 128:
+            # Light theme: use a slightly darker button
+            btn_bg = base_bg_qcolor.darker(110)
+            border_color = "#888"
+        else:
+            # Dark theme: use a slightly lighter button
+            btn_bg = base_bg_qcolor.lighter(120)
+            border_color = "#444"
+        text_color = get_contrasting_text_color(btn_bg)
+
+        btn_style = f"""
+            QPushButton {{
+                background-color: {btn_bg.name()};
+                color: {text_color};
+                border: 2px solid {border_color};
                 border-radius: 12px;
                 font-weight: bold;
                 font-size: 14px;
-            }
-            QPushButton:hover {
+            }}
+            QPushButton:hover {{
                 background-color: #4c8aff;
-            }
+                color: #fff;
+            }}
         """
 
         for btn in [self.plus_button, self.minus_button, self.left_button, self.right_button]:
-            btn.setFixedSize(btn_size, btn_size)
             btn.setStyleSheet(btn_style)
+            btn.setVisible(True)
+
+    def _setup_control_buttons(self):
+        btn_size = 24
+
+        for btn in [self.plus_button, self.minus_button, self.left_button, self.right_button]:
+            btn.setFixedSize(btn_size, btn_size)
             btn.setVisible(True)
 
         self.plus_button.setToolTip("Zoom in minimap")
