@@ -15,7 +15,7 @@ import edit_actions
 import keybinds
 from minimap import Minimap
 import splitscreen
-import theme_manager
+from theme_manager import theme_manager_singleton, get_editor_styles, ThemeManagerDialog
 from checkpoints import CheckpointManager, Checkpoint, CheckpointDialog, CheckpointManagerDialog
 from image_viewer_widget import ImageViewerWidget
 
@@ -56,7 +56,7 @@ def set_dark_palette(app):
     app.setPalette(palette)
 
 class NumberLine(QWidget):
-    def __init__(self, editor: QTextEdit):
+    def __init__(self, editor: QTextEdit, theme_data=None):
         super().__init__(editor)
         self.editor = editor
         self.font = editor.font()
@@ -65,7 +65,17 @@ class NumberLine(QWidget):
         self.editor.textChanged.connect(self.updateWidth)
         self.editor.verticalScrollBar().valueChanged.connect(self.update)
         self.editor.cursorPositionChanged.connect(self.update)
+        self.theme_data = theme_data or {}
+        self.set_theme(self.theme_data)
+        theme_manager_singleton.themeChanged.connect(self.set_theme)
         self.show()
+
+    def set_theme(self, theme_data):
+        self.theme_data = theme_data
+        editor_colors = theme_data.get("editor", {})
+        self.bg_color = QColor(editor_colors.get("line_number_background", "#222226"))
+        self.text_color = QColor(editor_colors.get("line_number_foreground", "#909090"))
+        self.update()
 
     def setFont(self, font):
         self.font = font
@@ -85,7 +95,7 @@ class NumberLine(QWidget):
     def paintEvent(self, event):
         try:
             painter = QPainter(self)
-            painter.fillRect(event.rect(), QColor("#222226"))
+            painter.fillRect(event.rect(), self.bg_color)
             painter.setFont(self.font)
             fm = QFontMetrics(self.font)
             doc = self.editor.document()
@@ -107,7 +117,7 @@ class NumberLine(QWidget):
                     continue
                 if block_top > viewport_height:
                     break
-                painter.setPen(QColor("#909090"))
+                painter.setPen(self.text_color)
                 rect_to_draw = QRect(0, int(block_top), self.width(), line_height)
                 painter.drawText(rect_to_draw, Qt.AlignRight | Qt.AlignVCenter, str(block_number))
                 block = block.next()
@@ -127,13 +137,23 @@ class EditorTabWidget(QWidget):
             self.editor.setFont(font)
         else:
             font = self.editor.font()
-        self.numberline = NumberLine(self.editor)
+        theme_data = theme_manager_singleton.get_theme()
+        self.numberline = NumberLine(self.editor, theme_data)
         self.numberline.setFont(self.editor.font())
-        self.minimap = Minimap(self, self.editor, self.numberline)
+        self.minimap = Minimap(self, self.editor, self.numberline, theme_data)
         self.numberline_on_left = numberline_on_left
         self.update_layout()
         self.numberline.show()
         self.minimap.show()
+        theme_manager_singleton.themeChanged.connect(self.set_theme)
+        self.set_theme(theme_data)
+
+    def set_theme(self, theme_data):
+        self.editor.setStyleSheet(get_editor_styles(theme_data))
+        if hasattr(self, "numberline"):
+            self.numberline.set_theme(theme_data)
+        if hasattr(self, "minimap"):
+            self.minimap.set_theme(theme_data)
 
     def update_layout(self):
         while self.layout.count():
@@ -226,14 +246,13 @@ class MainTabWidget(QTabWidget):
             return False
 
     def add_code_explorer_tab(self, file_path):
-        # Avoid adding duplicate tabs for the same file
         for i in range(self.count()):
             widget = self.widget(i)
             if hasattr(widget, "_ce_file_path") and widget._ce_file_path == file_path:
                 self.setCurrentIndex(i)
                 return
         try:
-            ce_widget = CodeExplorerWidget(file_path, parent=self)  # <-- fix here
+            ce_widget = CodeExplorerWidget(file_path, parent=self)
             ce_widget._ce_file_path = file_path
             title = f"Code Explorer: {os.path.basename(file_path)}"
             index = self.addTab(ce_widget, title)
@@ -264,8 +283,8 @@ class TextEditor(QMainWindow):
         self.setWindowTitle("Third Edit")
         self.setGeometry(100, 100, 1200, 800)
         self.setStyle(QStyleFactory.create("Fusion"))
-        self.theme = "dark"
-        self.themes = theme_manager.load_themes()
+        self.theme = theme_manager_singleton.current_theme_key
+        self.themes = theme_manager_singleton.themes
         self.current_font = load_font_config()
         self.show_numberline = True
         self.numberline_on_left = True
@@ -522,20 +541,18 @@ class TextEditor(QMainWindow):
                 QMessageBox.warning(self, "Warning", "No tabs selected for custom split.")
 
     def apply_theme(self, theme_key):
-        if theme_key in self.themes:
-            theme_data = self.themes[theme_key]
-            theme_manager.apply_theme(QApplication.instance(), theme_data)
-            self.theme = theme_key
-            editor_style = theme_manager.get_editor_styles(theme_data)
-            for i in range(getattr(self, 'tabs', QTabWidget()).count()):
-                tab = self.tabs.widget(i)
-                if hasattr(tab, "editor"):
-                    tab.editor.setStyleSheet(editor_style)
-                elif isinstance(tab, QSplitter):
-                    for j in range(tab.count()):
-                        widget = tab.widget(j)
-                        if hasattr(widget, "editor"):
-                            widget.editor.setStyleSheet(editor_style)
+        app = QApplication.instance()
+        theme_data = theme_manager_singleton.apply_theme(app, theme_key)
+        self.theme = theme_manager_singleton.current_theme_key
+        for i in range(getattr(self, 'tabs', QTabWidget()).count()):
+            tab = self.tabs.widget(i)
+            if hasattr(tab, "set_theme"):
+                tab.set_theme(theme_data)
+            elif isinstance(tab, QSplitter):
+                for j in range(tab.count()):
+                    widget = tab.widget(j)
+                    if hasattr(widget, "set_theme"):
+                        widget.set_theme(theme_data)
 
     def set_dark_theme(self):
         self.apply_theme("dark")
@@ -544,7 +561,7 @@ class TextEditor(QMainWindow):
         self.apply_theme("light")
 
     def open_theme_manager(self):
-        dialog = theme_manager.ThemeManagerDialog(self, self.theme)
+        dialog = ThemeManagerDialog(self, self.theme)
         if dialog.exec_():
             selected_theme = dialog.get_selected_theme_key()
             if selected_theme != self.theme:
