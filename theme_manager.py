@@ -12,6 +12,7 @@ from PyQt5.QtCore import Qt, pyqtSignal, QObject
 from default_themes import DEFAULT_THEMES  # <- You must have default_themes.py in the same folder
 
 THEME_CONFIG_PATH = "theme_config.json"
+USER_PREFS_PATH = "user_prefs.json"
 
 def load_themes():
     if os.path.exists(THEME_CONFIG_PATH):
@@ -33,6 +34,26 @@ def save_themes(themes):
         return True
     except Exception as e:
         print(f"Error saving theme config: {e}")
+        return False
+
+def load_user_prefs():
+    # Loads user preferences, returns a dict (e.g. {'theme': 'dark'})
+    if os.path.exists(USER_PREFS_PATH):
+        try:
+            with open(USER_PREFS_PATH, "r") as f:
+                prefs = json.load(f)
+                return prefs
+        except Exception as e:
+            print(f"Error loading user preferences: {e}")
+    return {}
+
+def save_user_prefs(prefs):
+    try:
+        with open(USER_PREFS_PATH, "w") as f:
+            json.dump(prefs, f, indent=2)
+        return True
+    except Exception as e:
+        print(f"Error saving user preferences: {e}")
         return False
 
 def apply_theme_palette(app, theme_data):
@@ -74,8 +95,20 @@ class ThemeManager(QObject):
     def __init__(self):
         super().__init__()
         self.themes = load_themes()
-        self.current_theme_key = "dark"
-        self.current_theme_data = self.themes[self.current_theme_key]
+        self.current_theme_key = self._load_last_theme_key()
+        self.current_theme_data = self.themes.get(self.current_theme_key, self.themes["dark"])
+
+    def _load_last_theme_key(self):
+        prefs = load_user_prefs()
+        key = prefs.get("theme", None)
+        if key in self.themes:
+            return key
+        return "dark"
+
+    def _save_last_theme_key(self, theme_key):
+        prefs = load_user_prefs()
+        prefs["theme"] = theme_key
+        save_user_prefs(prefs)
 
     def apply_theme(self, app, theme_key):
         if theme_key not in self.themes:
@@ -85,6 +118,7 @@ class ThemeManager(QObject):
         self.current_theme_data = theme_data
         apply_theme_palette(app, theme_data)
         self.themeChanged.emit(theme_data)
+        self._save_last_theme_key(theme_key)
         return theme_data
 
     def get_theme(self, key=None):
@@ -236,6 +270,10 @@ class ThemeManagerDialog(QDialog):
         if not self.selected_theme_key:
             return
         self.current_theme_key = self.selected_theme_key
+        # Save theme preference when applied from dialog as well
+        prefs = load_user_prefs()
+        prefs["theme"] = self.current_theme_key
+        save_user_prefs(prefs)
 
     def get_selected_theme_key(self):
         return self.current_theme_key
