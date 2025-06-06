@@ -1,39 +1,33 @@
 import json
 import os
 import copy
-from PyQt5.QtGui import QPalette, QColor
+from PyQt5.QtGui import QPalette, QColor, QFont
 from PyQt5.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
-    QListWidget, QListWidgetItem, QMessageBox, QFormLayout, QDialogButtonBox, QComboBox
+    QListWidget, QListWidgetItem, QMessageBox, QFormLayout, QDialogButtonBox, QGroupBox, QWidget, QSizePolicy, QFrame
 )
 from PyQt5.QtCore import Qt, pyqtSignal, QObject
 
-from default_themes import DEFAULT_THEMES  # <- You must have default_themes.py in the same folder
+from default_themes import DEFAULT_THEMES
+
+# Integration import for the new, improved theme editor
+from theme_editor import ThemeEditorDialog, load_custom_themes, save_custom_themes
 
 THEME_CONFIG_PATH = "theme_config.json"
 USER_PREFS_PATH = "user_prefs.json"
 
 def load_themes():
-    if os.path.exists(THEME_CONFIG_PATH):
-        try:
-            with open(THEME_CONFIG_PATH, "r") as f:
-                themes = json.load(f)
-                for key, theme in DEFAULT_THEMES.items():
-                    if key not in themes:
-                        themes[key] = theme
-                return themes
-        except Exception as e:
-            print(f"Error loading theme config: {e}")
-    return copy.deepcopy(DEFAULT_THEMES)
+    # Merge default and custom (user) themes
+    themes = copy.deepcopy(DEFAULT_THEMES)
+    custom_themes = load_custom_themes()
+    # Custom themes override default ones if keys overlap
+    themes.update(custom_themes)
+    return themes
 
 def save_themes(themes):
-    try:
-        with open(THEME_CONFIG_PATH, "w") as f:
-            json.dump(themes, f, indent=2)
-        return True
-    except Exception as e:
-        print(f"Error saving theme config: {e}")
-        return False
+    # Save only the user-custom themes to the user_custom_themes.json file
+    custom_themes = {k: v for k, v in themes.items() if k not in DEFAULT_THEMES}
+    return save_custom_themes(custom_themes)
 
 def load_user_prefs():
     if os.path.exists(USER_PREFS_PATH):
@@ -109,6 +103,8 @@ class ThemeManager(QObject):
         save_user_prefs(prefs)
 
     def apply_theme(self, app, theme_key):
+        # Reload themes to reflect possible changes in user themes
+        self.themes = load_themes()
         if theme_key not in self.themes:
             theme_key = "dark"
         theme_data = self.themes[theme_key]
@@ -130,49 +126,96 @@ class ThemeManagerDialog(QDialog):
     def __init__(self, parent=None, current_theme_key="dark"):
         super().__init__(parent)
         self.setWindowTitle("Theme Manager")
-        self.resize(600, 400)
-        self.themes = copy.deepcopy(theme_manager_singleton.themes)
+        self.setMinimumSize(560, 480)
+        self.setStyleSheet("""
+            QDialog { background: #22242a; color: #f3f6fa; }
+            QLabel { font-size: 15px; }
+            QListWidget { font-size: 15px; border-radius: 8px; background: #23262c; color: #f3f6fa; }
+            QListWidget::item:selected { background: #4c8aff; color: #fff; border-radius: 6px; }
+            QPushButton { padding: 7px 18px; font-size: 15px; border-radius: 8px; background: #2d2f37; color: #d0e1ff; border: 1px solid #444; }
+            QPushButton:hover { background: #4c8aff; color: #fff; }
+            QDialogButtonBox QPushButton { min-width: 100px; }
+            QGroupBox { border: 1.5px solid #555; border-radius: 10px; padding: 10px; margin-top: 10px; background: #23272e; }
+            QFrame#line { background: #444; max-height: 2px; min-height: 2px; border: none; }
+        """)
+        self.themes = load_themes()
         self.current_theme_key = current_theme_key
         self.selected_theme_key = current_theme_key
         self.init_ui()
 
     def init_ui(self):
         layout = QVBoxLayout(self)
+        # Title
+        title = QLabel("🖌️ <b>Theme Manager</b>")
+        title.setFont(QFont("Segoe UI", 21, QFont.Bold))
+        title.setAlignment(Qt.AlignCenter)
+        layout.addWidget(title)
+
+        # Split for list and details
+        main_row = QHBoxLayout()
+        # Theme List
+        list_box = QGroupBox("Available Themes")
+        list_layout = QVBoxLayout(list_box)
         self.theme_list = QListWidget()
+        self.theme_list.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Expanding)
+        self.theme_list.setMinimumWidth(220)
         self.update_theme_list()
         self.theme_list.currentRowChanged.connect(self.on_theme_selected)
-        layout.addWidget(self.theme_list)
+        list_layout.addWidget(self.theme_list)
+        main_row.addWidget(list_box, 2)
 
-        details_layout = QFormLayout()
+        # Details and actions
+        details_box = QGroupBox("Theme Details")
+        details_layout = QFormLayout(details_box)
+        details_box.setMinimumWidth(250)
         self.theme_name_label = QLabel()
         self.theme_desc_label = QLabel()
+        self.theme_type_label = QLabel()
         details_layout.addRow("Name:", self.theme_name_label)
         details_layout.addRow("Description:", self.theme_desc_label)
-        layout.addLayout(details_layout)
+        details_layout.addRow("Type:", self.theme_type_label)
+        main_row.addWidget(details_box, 3)
 
-        button_layout = QHBoxLayout()
+        layout.addLayout(main_row)
+
+        # Separator
+        line = QFrame()
+        line.setObjectName("line")
+        layout.addWidget(line)
+
+        # Modern action bar
+        btn_bar = QHBoxLayout()
+        btn_bar.addStretch(1)
         self.new_btn = QPushButton("New Theme")
+        self.new_btn.setToolTip("Create a new custom theme")
         self.new_btn.clicked.connect(self.create_new_theme)
-        button_layout.addWidget(self.new_btn)
+        btn_bar.addWidget(self.new_btn)
 
         self.edit_btn = QPushButton("Edit Theme")
+        self.edit_btn.setToolTip("Edit the selected custom theme")
         self.edit_btn.clicked.connect(self.edit_theme)
-        button_layout.addWidget(self.edit_btn)
+        btn_bar.addWidget(self.edit_btn)
 
         self.delete_btn = QPushButton("Delete Theme")
+        self.delete_btn.setToolTip("Delete the selected custom theme")
         self.delete_btn.clicked.connect(self.delete_theme)
-        button_layout.addWidget(self.delete_btn)
+        btn_bar.addWidget(self.delete_btn)
 
         self.apply_btn = QPushButton("Apply Theme")
+        self.apply_btn.setToolTip("Apply the selected theme")
         self.apply_btn.clicked.connect(self.apply_theme)
-        button_layout.addWidget(self.apply_btn)
+        btn_bar.addWidget(self.apply_btn)
+        btn_bar.addStretch(1)
+        layout.addLayout(btn_bar)
 
-        layout.addLayout(button_layout)
+        # Dialog box buttons
         buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        buttons.button(QDialogButtonBox.Ok).setText("Close")
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
 
+        # Select current theme
         for i in range(self.theme_list.count()):
             item = self.theme_list.item(i)
             if item.data(Qt.UserRole) == self.current_theme_key:
@@ -183,11 +226,20 @@ class ThemeManagerDialog(QDialog):
         self.theme_list.clear()
         for key, theme in self.themes.items():
             item = QListWidgetItem(theme["name"])
+            # Visual badge for user themes
+            is_custom = key not in DEFAULT_THEMES
             item.setData(Qt.UserRole, key)
+            if is_custom:
+                item.setText(f"🟢 {theme['name']}")
+            else:
+                item.setText(f"🔵 {theme['name']}")
             self.theme_list.addItem(item)
 
     def on_theme_selected(self, row):
         if row < 0:
+            self.theme_name_label.setText("")
+            self.theme_desc_label.setText("")
+            self.theme_type_label.setText("")
             return
         item = self.theme_list.item(row)
         theme_key = item.data(Qt.UserRole)
@@ -195,25 +247,27 @@ class ThemeManagerDialog(QDialog):
         theme = self.themes[theme_key]
         self.theme_name_label.setText(theme["name"])
         self.theme_desc_label.setText(theme["description"])
-        is_default = theme_key in DEFAULT_THEMES
-        self.delete_btn.setEnabled(not is_default)
+        if theme_key in DEFAULT_THEMES:
+            self.theme_type_label.setText("Built-in")
+            self.edit_btn.setEnabled(False)
+            self.delete_btn.setEnabled(False)
+        else:
+            self.theme_type_label.setText("Custom")
+            self.edit_btn.setEnabled(True)
+            self.delete_btn.setEnabled(True)
 
     def create_new_theme(self):
-        # Use the ThemeEditorDialog from theme_editor.py
-        try:
-            from theme_editor import ThemeEditorDialog
-        except ImportError:
-            QMessageBox.warning(self, "Error", "theme_editor.py not found or import failed.")
-            return
         dialog = ThemeEditorDialog(self)
         if dialog.exec_():
             new_theme = dialog.get_theme_data()
             new_key = dialog.get_theme_key()
+            # Avoid key collision
             if new_key in self.themes:
                 i = 1
                 while f"{new_key}_{i}" in self.themes:
                     i += 1
                 new_key = f"{new_key}_{i}"
+                new_theme["name"] += f" ({i})"
             self.themes[new_key] = copy.deepcopy(new_theme)
             save_themes(self.themes)
             self.update_theme_list()
@@ -229,18 +283,14 @@ class ThemeManagerDialog(QDialog):
         if self.selected_theme_key in DEFAULT_THEMES:
             QMessageBox.information(
                 self, "Cannot Edit Default Theme",
-                "Default themes cannot be edited. Please create a new theme based on this one."
+                "Built-in themes cannot be edited. Create a new custom theme instead."
             )
-            return
-        try:
-            from theme_editor import ThemeEditorDialog
-        except ImportError:
-            QMessageBox.warning(self, "Error", "theme_editor.py not found or import failed.")
             return
         dialog = ThemeEditorDialog(self, self.themes[self.selected_theme_key], self.selected_theme_key)
         if dialog.exec_():
             updated_theme = dialog.get_theme_data()
             updated_key = dialog.get_theme_key()
+            # If key changes, remove old
             if updated_key != self.selected_theme_key:
                 del self.themes[self.selected_theme_key]
             self.themes[updated_key] = copy.deepcopy(updated_theme)
@@ -258,13 +308,13 @@ class ThemeManagerDialog(QDialog):
         if self.selected_theme_key in DEFAULT_THEMES:
             QMessageBox.information(
                 self, "Cannot Delete Default Theme",
-                "Default themes cannot be deleted."
+                "Built-in themes cannot be deleted."
             )
             return
         confirm = QMessageBox.question(
             self,
-            "Confirm Delete",
-            f"Are you sure you want to delete the theme '{self.themes[self.selected_theme_key]['name']}'?",
+            "Delete Theme?",
+            f"Delete the theme '{self.themes[self.selected_theme_key]['name']}'? This cannot be undone.",
             QMessageBox.Yes | QMessageBox.No,
             QMessageBox.No
         )
@@ -274,6 +324,10 @@ class ThemeManagerDialog(QDialog):
             self.update_theme_list()
             if self.theme_list.count() > 0:
                 self.theme_list.setCurrentRow(0)
+            else:
+                self.theme_name_label.setText("")
+                self.theme_desc_label.setText("")
+                self.theme_type_label.setText("")
 
     def apply_theme(self):
         if not self.selected_theme_key:
@@ -282,6 +336,7 @@ class ThemeManagerDialog(QDialog):
         prefs = load_user_prefs()
         prefs["theme"] = self.current_theme_key
         save_user_prefs(prefs)
+        # Optionally, emit a signal or call ThemeManager to apply now
 
     def get_selected_theme_key(self):
         return self.current_theme_key
