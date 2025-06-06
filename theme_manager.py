@@ -10,22 +10,18 @@ from PyQt5.QtCore import Qt, pyqtSignal, QObject
 
 from default_themes import DEFAULT_THEMES
 
-# Integration import for the new, improved theme editor
 from theme_editor import ThemeEditorDialog, load_custom_themes, save_custom_themes
 
 THEME_CONFIG_PATH = "theme_config.json"
 USER_PREFS_PATH = "user_prefs.json"
 
 def load_themes():
-    # Merge default and custom (user) themes
     themes = copy.deepcopy(DEFAULT_THEMES)
     custom_themes = load_custom_themes()
-    # Custom themes override default ones if keys overlap
     themes.update(custom_themes)
     return themes
 
 def save_themes(themes):
-    # Save only the user-custom themes to the user_custom_themes.json file
     custom_themes = {k: v for k, v in themes.items() if k not in DEFAULT_THEMES}
     return save_custom_themes(custom_themes)
 
@@ -103,7 +99,6 @@ class ThemeManager(QObject):
         save_user_prefs(prefs)
 
     def apply_theme(self, app, theme_key):
-        # Reload themes to reflect possible changes in user themes
         self.themes = load_themes()
         if theme_key not in self.themes:
             theme_key = "dark"
@@ -146,8 +141,8 @@ class ThemeManagerDialog(QDialog):
     def init_ui(self):
         layout = QVBoxLayout(self)
         # Title
-        title = QLabel("🖌️ <b>Theme Manager</b>")
-        title.setFont(QFont("Segoe UI", 21, QFont.Bold))
+        title = QLabel("Theme Manager")
+        title.setFont(QFont("Segoe UI", 18, QFont.Bold))
         title.setAlignment(Qt.AlignCenter)
         layout.addWidget(title)
 
@@ -208,14 +203,12 @@ class ThemeManagerDialog(QDialog):
         btn_bar.addStretch(1)
         layout.addLayout(btn_bar)
 
-        # Dialog box buttons
         buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
         buttons.button(QDialogButtonBox.Ok).setText("Close")
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
 
-        # Select current theme
         for i in range(self.theme_list.count()):
             item = self.theme_list.item(i)
             if item.data(Qt.UserRole) == self.current_theme_key:
@@ -226,13 +219,12 @@ class ThemeManagerDialog(QDialog):
         self.theme_list.clear()
         for key, theme in self.themes.items():
             item = QListWidgetItem(theme["name"])
-            # Visual badge for user themes
             is_custom = key not in DEFAULT_THEMES
             item.setData(Qt.UserRole, key)
             if is_custom:
-                item.setText(f"🟢 {theme['name']}")
+                item.setText(f"{theme['name']} (Custom)")
             else:
-                item.setText(f"🔵 {theme['name']}")
+                item.setText(f"{theme['name']} (Built-in)")
             self.theme_list.addItem(item)
 
     def on_theme_selected(self, row):
@@ -261,7 +253,6 @@ class ThemeManagerDialog(QDialog):
         if dialog.exec_():
             new_theme = dialog.get_theme_data()
             new_key = dialog.get_theme_key()
-            # Avoid key collision
             if new_key in self.themes:
                 i = 1
                 while f"{new_key}_{i}" in self.themes:
@@ -290,7 +281,6 @@ class ThemeManagerDialog(QDialog):
         if dialog.exec_():
             updated_theme = dialog.get_theme_data()
             updated_key = dialog.get_theme_key()
-            # If key changes, remove old
             if updated_key != self.selected_theme_key:
                 del self.themes[self.selected_theme_key]
             self.themes[updated_key] = copy.deepcopy(updated_theme)
@@ -336,7 +326,6 @@ class ThemeManagerDialog(QDialog):
         prefs = load_user_prefs()
         prefs["theme"] = self.current_theme_key
         save_user_prefs(prefs)
-        # Optionally, emit a signal or call ThemeManager to apply now
 
     def get_selected_theme_key(self):
         return self.current_theme_key
