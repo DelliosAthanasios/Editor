@@ -8,7 +8,7 @@
     "description": "Redo last undone change"
   },
   "Select All": {
-    "keys": "Ctrl+1",
+    "keys": "Ctrl+2",
     "description": "Select all text"
   },
   "Search": {
