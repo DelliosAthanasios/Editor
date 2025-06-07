@@ -752,6 +752,8 @@ if __name__ == '__main__':
         edit_actions.connect_edit_menu(window)
         keybinds.integrate_keybinds_menu(window)
         window.show()
+        import dynamic_saving
+        dynamic_saving.enable_dynamic_saving(window)
         sys.exit(app.exec_())
     except Exception as exc:
         print('An error occurred while running the application:', exc)
