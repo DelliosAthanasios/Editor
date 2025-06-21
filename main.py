@@ -220,8 +220,9 @@ class MainTabWidget(QTabWidget):
         self.removeTab(index)
 
 class TextEditor(QMainWindow):
-    def __init__(self):
+    def __init__(self, canvas_parent=None):
         super().__init__()
+        self.canvas_parent = canvas_parent
         self.setWindowTitle("Third Edit")
         self.setGeometry(100, 100, 1200, 800)
         self.setStyle(QStyleFactory.create("Fusion"))
@@ -229,7 +230,13 @@ class TextEditor(QMainWindow):
         self.show_numberline = True
         self.numberline_on_left = True
         self.filetree_visible = False
+<<<<<<< Updated upstream
         self.theme = "dark"
+=======
+        self.checkpoint_manager = CheckpointManager()
+        self.music_player = None
+        self.child_windows = []  # Keep references to child windows
+>>>>>>> Stashed changes
         self.init_ui()
         self.set_dark_theme()
 
@@ -249,6 +256,49 @@ class TextEditor(QMainWindow):
         self.setCentralWidget(self.splitter)
         self.create_menu_bar()
 
+<<<<<<< Updated upstream
+=======
+    def add_editor_tab_to_splitter(self, orientation=None):
+        # Optionally change orientation
+        if orientation is not None:
+            self.editor_splitter.setOrientation(orientation)
+        editor = MainTabWidget(file_open_callback=self.open_file_in_editor_tab)
+        editor.add_editor_tab(font=self.current_font, numberline_on_left=self.numberline_on_left)
+        self.editor_splitter.addWidget(editor)
+        self.editors.append(editor)
+
+    def remove_editor_tab_from_splitter(self):
+        if len(self.editors) > 1:
+            editor = self.editors.pop()
+            editor.setParent(None)
+            editor.deleteLater()
+
+    def setup_split_actions(self):
+        # Split horizontally
+        self.split_horizontal_action = QAction("Split Horizontally", self)
+        self.split_horizontal_action.setShortcut("Ctrl+Alt+H")
+        self.split_horizontal_action.triggered.connect(self.handle_split_action)
+        self.addAction(self.split_horizontal_action)
+
+        # Split vertically (same as horizontally for new window)
+        self.split_vertical_action = QAction("Split Vertically", self)
+        self.split_vertical_action.setShortcut("Ctrl+Alt+V")
+        self.split_vertical_action.triggered.connect(self.handle_split_action)
+        self.addAction(self.split_vertical_action)
+
+        # Unsplit (close this window if not the last one)
+        self.unsplit_action = QAction("Unsplit Window", self)
+        self.unsplit_action.setShortcut("Ctrl+Alt+U")
+        self.unsplit_action.triggered.connect(self.close)
+        self.addAction(self.unsplit_action)
+
+    def get_active_tabwidget(self):
+        # Return the last editor (focused logic can be improved)
+        if self.editors:
+            return self.editors[-1]
+        return None
+
+>>>>>>> Stashed changes
     def open_file_in_editor_tab(self, file_path):
         # Only open if not already open, otherwise switch tab
         for i in range(self.tabs.count()):
@@ -327,6 +377,7 @@ class TextEditor(QMainWindow):
 
         # --- Split Screen menu with advanced split
         split_screen_menu = view_menu.addMenu("Split Screen")
+<<<<<<< Updated upstream
         horizontal_split_action = QAction("Horizontal Split", self)
         horizontal_split_action.triggered.connect(self.split_horizontally)
         split_screen_menu.addAction(horizontal_split_action)
@@ -339,6 +390,23 @@ class TextEditor(QMainWindow):
         # No functionality, placeholder
         split_screen_menu.addAction(advanced_split_action)
 
+=======
+        split_horizontal_action = QAction("Split Horizontally", self)
+        split_horizontal_action.setShortcut("Ctrl+Alt+H")
+        split_horizontal_action.triggered.connect(self.handle_split_action)
+        split_screen_menu.addAction(split_horizontal_action)
+        
+        split_vertical_action = QAction("Split Vertically", self)
+        split_vertical_action.setShortcut("Ctrl+Alt+V")
+        split_vertical_action.triggered.connect(self.handle_split_action)
+        split_screen_menu.addAction(split_vertical_action)
+        
+        unsplit_action = QAction("Unsplit Window", self)
+        unsplit_action.setShortcut("Ctrl+Alt+U")
+        unsplit_action.triggered.connect(self.close)
+        split_screen_menu.addAction(unsplit_action)
+        
+>>>>>>> Stashed changes
         Themes_screen_menu = view_menu.addMenu("Themes")
         Themes_screen_menu.addAction("White Mode", self.set_light_theme)
         Themes_screen_menu.addAction("Dark Mode", self.set_dark_theme)
@@ -559,6 +627,17 @@ class TextEditor(QMainWindow):
             tab = self.tabs.widget(i)
             if hasattr(tab, "setFont"):
                 tab.setFont(font)
+
+    def handle_split_action(self):
+        if self.canvas_parent is not None:
+            self.canvas_parent.add_split_editor()
+        else:
+            self.open_new_window()
+
+    def open_new_window(self):
+        new_window = TextEditor()
+        new_window.show()
+        self.child_windows.append(new_window)
 
 if __name__ == '__main__':
     try:
