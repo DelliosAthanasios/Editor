@@ -1,0 +1,47 @@
+{
+  "rules": [
+    {
+      "patterns": [
+        "\\b(alias|and|begin|break|case|class|def|defined\\?|do|else|elsif|end|ensure|false|for|if|in|module|next|nil|not|or|redo|rescue|retry|return|self|super|then|true|undef|unless|until|when|while|yield)\\b"
+      ],
+      "format": {
+        "color": "#d60609",
+        "bold": true
+      }
+    },
+    {
+      "patterns": [
+        "#.*"
+      ],
+      "format": {
+        "color": "#6A9955"
+      }
+    },
+    {
+      "patterns": [
+        "\"[^\"]*\"",
+        "'[^']*'"
+      ],
+      "format": {
+        "color": "#CE9178"
+      }
+    },
+    {
+      "patterns": [
+        "hello"
+      ],
+      "format": {
+        "color": "#5500ff"
+      }
+    }
+  ],
+  "multiline": [
+    {
+      "start": "=begin",
+      "end": "=end",
+      "format": {
+        "color": "#6A9955"
+      }
+    }
+  ]
+}

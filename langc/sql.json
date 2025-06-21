@@ -1,0 +1,17 @@
+{
+  "rules": [
+    {
+      "patterns": ["\\b(SELECT|FROM|WHERE|INSERT|UPDATE|DELETE|INTO|VALUES|CREATE|TABLE|ALTER|DROP|PRIMARY|KEY|NOT|NULL|AND|OR|AS|ON|JOIN|LEFT|RIGHT|INNER|OUTER|FULL|GROUP|BY|ORDER|HAVING|DISTINCT|UNION|ALL|EXISTS|IN|BETWEEN|LIKE|LIMIT|OFFSET|CASE|WHEN|THEN|ELSE|END|IS|SET)\\b"],
+      "format": {"color": "#569CD6", "bold": true}
+    },
+    {
+      "patterns": ["--.*"],
+      "format": {"color": "#6A9955"}
+    },
+    {
+      "patterns": ["\"[^\"]*\"", "'[^']*'"],
+      "format": {"color": "#CE9178"}
+    }
+  ],
+  "multiline": []
+}

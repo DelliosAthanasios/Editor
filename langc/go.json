@@ -1,0 +1,27 @@
+{
+  "rules": [
+    {
+      "patterns": ["\\b(break|case|chan|const|continue|default|defer|else|fallthrough|for|func|go|goto|if|import|interface|map|package|range|return|select|struct|switch|type|var)\\b"],
+      "format": {"color": "#569CD6", "bold": true}
+    },
+    {
+      "patterns": ["//.*"],
+      "format": {"color": "#6A9955"}
+    },
+    {
+      "patterns": ["/\\*.*\\*/"],
+      "format": {"color": "#6A9955"}
+    },
+    {
+      "patterns": ["\"[^\"]*\"", "`[^`]*`"],
+      "format": {"color": "#CE9178"}
+    }
+  ],
+  "multiline": [
+    {
+      "start": "/\\*",
+      "end": "\\*/",
+      "format": {"color": "#6A9955"}
+    }
+  ]
+}

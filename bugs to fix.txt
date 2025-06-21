@@ -1,0 +1,28 @@
+1 When starting the app the UI is white instead of black  Fixed
+2 Some keybinds does not work 
+List of not working keybinds 
+Search Control F
+Replace Control H
+Go to line cotrol G
+New file control N 
+Close Tab works but only on tabs it does not closes the file_explorer 
+Set Mark control space
+Transpose Characters Control T does not work
+3 
+Splitscreen works now but there are some key bugs 
+for example
+1) When you have sucessfully splitted the screen the user can not perform 
+any actions a regular tab has 
+(he can not save , he can not open file, he can not use keybinds ) 
+2) the split does not include already existing tabs if the user checks the box to include them 
+3) the splitted tabs work as one you can not close for example one window when you have 
+a two way splited screen you can only close everything at once 
+4) there is no global Ui changes becausw i have done some spageti code and the widgets such as number line and minimap
+do not change theme when you change theme through the theme manager.
+5) The theme changes of the user from theme manager do not save after quiting the app
+6) Integrate the pdf_viewer inside the editor as a tab and when opening pdf file open it immediatly through the pdf_viewer (and make it apear as a tab insde Editor) fixed
+7) Code explorer ce.py should open inside the editor as a widget which can be rotated moved and risized it also should detext the path of the tab and open 
+
+
+
+

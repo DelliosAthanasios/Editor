@@ -1,0 +1,17 @@
+{
+  "rules": [
+    {
+      "patterns": ["\\b(if|then|else|elif|fi|for|while|in|do|done|case|esac|function|select|until|break|continue|return|exit|echo|read|exec|trap|local|export|declare|typeset|let|eval|set|unset|shift|test)\\b"],
+      "format": {"color": "#569CD6", "bold": true}
+    },
+    {
+      "patterns": ["#.*"],
+      "format": {"color": "#6A9955"}
+    },
+    {
+      "patterns": ["\"[^\"]*\"", "'[^']*'"],
+      "format": {"color": "#CE9178"}
+    }
+  ],
+  "multiline": []
+}

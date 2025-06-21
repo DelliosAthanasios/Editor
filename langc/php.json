@@ -1,0 +1,27 @@
+{
+  "rules": [
+    {
+      "patterns": ["\\b(abstract|and|array|as|break|callable|case|catch|class|clone|const|continue|declare|default|do|else|elseif|enddeclare|endfor|endforeach|endif|endswitch|endwhile|extends|final|finally|fn|for|foreach|function|global|goto|if|implements|include|include_once|instanceof|insteadof|interface|isset|list|namespace|new|or|print|private|protected|public|require|require_once|return|static|switch|throw|trait|try|unset|use|var|while|xor|yield|yield from)\\b"],
+      "format": {"color": "#569CD6", "bold": true}
+    },
+    {
+      "patterns": ["//.*", "#.*"],
+      "format": {"color": "#6A9955"}
+    },
+    {
+      "patterns": ["/\\*.*\\*/"],
+      "format": {"color": "#6A9955"}
+    },
+    {
+      "patterns": ["\"[^\"]*\"", "'[^']*'"],
+      "format": {"color": "#CE9178"}
+    }
+  ],
+  "multiline": [
+    {
+      "start": "/\\*",
+      "end": "\\*/",
+      "format": {"color": "#6A9955"}
+    }
+  ]
+}

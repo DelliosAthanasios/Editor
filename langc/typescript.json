@@ -1,0 +1,27 @@
+{
+  "rules": [
+    {
+      "patterns": ["\\b(as|any|boolean|break|case|catch|class|const|continue|declare|default|delete|do|else|enum|export|extends|false|finally|for|from|function|if|implements|import|in|infer|instanceof|interface|is|keyof|let|module|namespace|never|new|null|number|object|of|package|private|protected|public|readonly|require|global|return|set|static|string|super|switch|symbol|this|throw|true|try|type|typeof|undefined|unique|unknown|var|void|while|with|yield)\\b"],
+      "format": {"color": "#569CD6", "bold": true}
+    },
+    {
+      "patterns": ["//.*"],
+      "format": {"color": "#6A9955"}
+    },
+    {
+      "patterns": ["/\\*.*\\*/"],
+      "format": {"color": "#6A9955"}
+    },
+    {
+      "patterns": ["\"[^\"]*\"", "'[^']*'", "`[^`]*`"],
+      "format": {"color": "#CE9178"}
+    }
+  ],
+  "multiline": [
+    {
+      "start": "/\\*",
+      "end": "\\*/",
+      "format": {"color": "#6A9955"}
+    }
+  ]
+}

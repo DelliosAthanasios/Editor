@@ -1,0 +1,79 @@
+{
+  "rules": [
+    {
+      "patterns": [
+        "\\b(def|class|return|if|elif|else|for|while|try|except|with|as|import|from|lambda|pass|break|continue|True|False|None|in|and|or|not|is|global|nonlocal|assert|yield|del|raise|finally)\\b"
+      ],
+      "format": {
+        "color": "#569CD6",
+        "bold": true
+      }
+    },
+    {
+      "patterns": [
+        "#.*"
+      ],
+      "format": {
+        "color": "#6A9955"
+      }
+    },
+    {
+      "patterns": [
+        "\"[^\"]*\"",
+        "'[^']*'"
+      ],
+      "format": {
+        "color": "#CE9178"
+      }
+    },
+    {
+      "patterns": [
+        "\\bself\\b"
+      ],
+      "format": {
+        "color": "#9CDCFE",
+        "italic": true
+      }
+    },
+    {
+      "patterns": [
+        "\\b[A-Z][A-Za-z0-9_]*\\b"
+      ],
+      "format": {
+        "color": "#4EC9B0"
+      }
+    },
+    {
+      "patterns": [
+        "\\b[A-Z][A-Za-z0-9_]*\\b"
+      ],
+      "format": {
+        "color": "#ffaaff"
+      }
+    },
+    {
+      "patterns": [
+        "hello"
+      ],
+      "format": {
+        "color": "#d6b200"
+      }
+    }
+  ],
+  "multiline": [
+    {
+      "start": "\"\"\"",
+      "end": "\"\"\"",
+      "format": {
+        "color": "#CE9178"
+      }
+    },
+    {
+      "start": "'''",
+      "end": "'''",
+      "format": {
+        "color": "#CE9178"
+      }
+    }
+  ]
+}
