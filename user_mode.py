@@ -1,12 +1,19 @@
 import os
 import sys
+import shutil
+import inspect
+import importlib.util
 from PyQt5.QtWidgets import (
-    QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QListWidget, QTextEdit, QPushButton, QLabel, QFileDialog, QMessageBox, QSplitter, QComboBox, QFileSystemModel, QTreeView
+    QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QListWidget, QTextEdit, QPushButton, QLabel, QFileDialog, QMessageBox, QSplitter, QComboBox, QFileSystemModel, QTreeView, QTabWidget, QCheckBox
 )
 from PyQt5.QtCore import Qt, QDir
 from user_mode.config_loader import load_config
 from user_mode.api import EditorAPI
 from user_mode import plugin_loader
+
+EDITOR_ROOT = os.path.dirname(os.path.abspath(__file__))
+PROJECT_ROOT = os.path.dirname(EDITOR_ROOT)
+BACKUP_DIR = os.path.join(EDITOR_ROOT, "changes", "default.backup")
 
 # List of main UI elements and their QSS selectors and default QSS
 UI_ELEMENTS = [
@@ -41,6 +48,32 @@ def get_entity_code(entity):
         with open(path, 'r', encoding='utf-8') as f:
             return f.read()
     return ''
+
+# Utility: backup full editor if not already
+def backup_editor():
+    if not os.listdir(BACKUP_DIR):
+        for item in os.listdir(PROJECT_ROOT):
+            if item not in ["user_mode", "addons", "__pycache__"]:
+                s = os.path.join(PROJECT_ROOT, item)
+                d = os.path.join(BACKUP_DIR, item)
+                if os.path.isdir(s):
+                    shutil.copytree(s, d, dirs_exist_ok=True)
+                else:
+                    shutil.copy2(s, d)
+
+# Utility: find all PyQt UI classes in a .py file
+def find_pyqt_ui_classes(path):
+    classes = []
+    try:
+        spec = importlib.util.spec_from_file_location("_mod", path)
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        for name, obj in inspect.getmembers(mod, inspect.isclass):
+            if issubclass(obj, QWidget) and obj.__module__ == mod.__name__:
+                classes.append((name, obj))
+    except Exception:
+        pass
+    return classes
 
 class StyleChooser(QMainWindow):
     def __init__(self):
@@ -173,63 +206,110 @@ class StyleChooser(QMainWindow):
         QMessageBox.information(self, "Reloaded", "Styles reloaded from user_styles.qss.")
 
 class UserModeWindow(QMainWindow):
-    def __init__(self, main_window=None, theme_editor=None, font_editor=None):
+    def __init__(self, main_window=None, theme_editor_path=None, font_editor_path=None):
         super().__init__()
-        self.setWindowTitle("User Mode Profile Manager")
-        self.setGeometry(200, 100, 1200, 800)
+        self.setWindowTitle("User Mode - Advanced Customization")
+        self.setGeometry(100, 50, 1400, 900)
         self.main_window = main_window
-        self.theme_editor = theme_editor
-        self.font_editor = font_editor
+        self.theme_editor_path = theme_editor_path
+        self.font_editor_path = font_editor_path
         self.api = EditorAPI(main_window)
         self.init_ui()
-        self.load_and_apply_profile(PROFILE_PATH)
+        self.load_and_apply_profile(os.path.join(EDITOR_ROOT, "user_mode", "user_profile.json"))
 
     def init_ui(self):
         central = QWidget()
         layout = QHBoxLayout(central)
         self.setCentralWidget(central)
 
-        # File browser (left)
-        self.file_model = QFileSystemModel()
-        self.file_model.setRootPath(QDir.currentPath())
-        self.file_tree = QTreeView()
-        self.file_tree.setModel(self.file_model)
-        self.file_tree.setRootIndex(self.file_model.index(QDir.currentPath()))
-        self.file_tree.setColumnWidth(0, 250)
-        self.file_tree.clicked.connect(self.on_file_selected)
-        layout.addWidget(self.file_tree, 2)
+        self.tabs = QTabWidget()
+        layout.addWidget(self.tabs, 2)
 
-        # Main area (center)
-        main_splitter = QSplitter(Qt.Vertical)
-        layout.addWidget(main_splitter, 5)
+        # --- UI Elements Tab ---
+        self.ui_tab = QWidget()
+        ui_layout = QVBoxLayout(self.ui_tab)
+        self.ui_list = QListWidget()
+        self.ui_list.itemSelectionChanged.connect(self.on_ui_element_selected)
+        ui_layout.addWidget(QLabel("UI Elements (PyQt classes):"))
+        ui_layout.addWidget(self.ui_list, 1)
+        self.ui_code = QTextEdit()
+        self.ui_code.setReadOnly(False)
+        ui_layout.addWidget(self.ui_code, 3)
+        self.ui_save_btn = QPushButton("Save UI Edit")
+        self.ui_save_btn.clicked.connect(self.save_ui_edit)
+        ui_layout.addWidget(self.ui_save_btn)
+        self.ui_reload_btn = QPushButton("Reload UI File")
+        self.ui_reload_btn.clicked.connect(self.reload_ui_file)
+        self.ui_restore_btn = QPushButton("Restore UI from Backup")
+        self.ui_restore_btn.clicked.connect(self.restore_ui_from_backup)
+        ui_layout.addWidget(self.ui_reload_btn)
+        ui_layout.addWidget(self.ui_restore_btn)
+        self.tabs.addTab(self.ui_tab, "UI Elements")
+        self.populate_ui_elements()
 
-        # Top: code/source viewer
-        self.code_view = QTextEdit()
-        self.code_view.setReadOnly(True)
-        self.code_view.setFontFamily("Fira Mono")
-        self.code_view.setFontPointSize(11)
-        main_splitter.addWidget(self.code_view)
+        # --- Logic Tab ---
+        self.logic_tab = QWidget()
+        logic_layout = QVBoxLayout(self.logic_tab)
+        logic_layout.addWidget(QLabel("Logic (non-UI Python code):"))
+        self.logic_list = QListWidget()
+        self.logic_list.itemSelectionChanged.connect(self.on_logic_selected)
+        logic_layout.addWidget(self.logic_list, 1)
+        self.logic_code = QTextEdit()
+        self.logic_code.setReadOnly(False)
+        logic_layout.addWidget(self.logic_code, 3)
+        self.logic_save_btn = QPushButton("Save Logic Edit")
+        self.logic_save_btn.clicked.connect(self.save_logic_edit)
+        logic_layout.addWidget(self.logic_save_btn)
+        self.logic_reload_btn = QPushButton("Reload Logic File")
+        self.logic_reload_btn.clicked.connect(self.reload_logic_file)
+        self.logic_restore_btn = QPushButton("Restore Logic from Backup")
+        self.logic_restore_btn.clicked.connect(self.restore_logic_from_backup)
+        logic_layout.addWidget(self.logic_reload_btn)
+        logic_layout.addWidget(self.logic_restore_btn)
+        self.tabs.addTab(self.logic_tab, "Logic")
+        self.populate_logic_files()
 
-        # Bottom: live Python prompt and output
-        prompt_layout = QVBoxLayout()
-        prompt_widget = QWidget()
-        prompt_widget.setLayout(prompt_layout)
-        main_splitter.addWidget(prompt_widget)
+        # --- Addons Tab ---
+        self.addons_tab = QWidget()
+        addons_layout = QVBoxLayout(self.addons_tab)
+        addons_layout.addWidget(QLabel("Addons (user scripts/plugins):"))
+        self.addons_list = QListWidget()
+        self.addons_list.itemSelectionChanged.connect(self.on_addon_selected)
+        addons_layout.addWidget(self.addons_list, 1)
+        self.addon_code = QTextEdit()
+        self.addon_code.setReadOnly(False)
+        addons_layout.addWidget(self.addon_code, 3)
+        self.addon_save_btn = QPushButton("Save Addon Edit")
+        self.addon_save_btn.clicked.connect(self.save_addon_edit)
+        addons_layout.addWidget(self.addon_save_btn)
+        self.addon_enable_btn = QPushButton("Enable/Disable Addon")
+        self.addon_enable_btn.clicked.connect(self.toggle_addon_enabled)
+        addons_layout.addWidget(self.addon_enable_btn)
+        self.addon_reload_btn = QPushButton("Reload Addon")
+        self.addon_reload_btn.clicked.connect(self.reload_addon)
+        self.addon_remove_btn = QPushButton("Remove Addon")
+        self.addon_remove_btn.clicked.connect(self.remove_addon)
+        self.addon_install_btn = QPushButton("Install Addon from File")
+        self.addon_install_btn.clicked.connect(self.install_addon)
+        self.addon_restore_btn = QPushButton("Restore Addon from Backup")
+        self.addon_restore_btn.clicked.connect(self.restore_addon_from_backup)
+        addons_layout.addWidget(self.addon_reload_btn)
+        addons_layout.addWidget(self.addon_remove_btn)
+        addons_layout.addWidget(self.addon_install_btn)
+        addons_layout.addWidget(self.addon_restore_btn)
+        self.tabs.addTab(self.addons_tab, "Addons")
+        self.populate_addons()
 
-        self.prompt_label = QLabel("<b>Live Python Prompt</b> (context: api, main_window, theme_editor, font_editor)")
-        prompt_layout.addWidget(self.prompt_label)
-        self.prompt = QTextEdit()
-        self.prompt.setPlaceholderText("Type Python code here. Use api, main_window, theme_editor, font_editor.")
-        prompt_layout.addWidget(self.prompt)
-        self.run_btn = QPushButton("Run Prompt")
-        self.run_btn.clicked.connect(self.run_prompt)
-        prompt_layout.addWidget(self.run_btn)
-        self.output = QTextEdit()
-        self.output.setReadOnly(True)
-        self.output.setPlaceholderText("Prompt output and errors will appear here.")
-        prompt_layout.addWidget(self.output)
+        # --- Help Tab ---
+        self.help_tab = QWidget()
+        help_layout = QVBoxLayout(self.help_tab)
+        help_text = QTextEdit()
+        help_text.setReadOnly(True)
+        help_text.setPlainText(self.generate_help_text())
+        help_layout.addWidget(help_text)
+        self.tabs.addTab(self.help_tab, "Help")
 
-        # Right: profile controls and editor launchers
+        # Right panel: Theme/Font Editor, Profile, Prompt
         right_panel = QVBoxLayout()
         right_widget = QWidget()
         right_widget.setLayout(right_panel)
@@ -245,19 +325,155 @@ class UserModeWindow(QMainWindow):
         self.font_btn = QPushButton("Open Font Editor")
         self.font_btn.clicked.connect(self.launch_font_editor)
         right_panel.addWidget(self.font_btn)
+        right_panel.addWidget(QLabel("Live Python Prompt (context: api, main_window, output)"))
+        self.prompt = QTextEdit()
+        self.prompt.setPlaceholderText("Type Python code here. Use api, main_window, output.")
+        right_panel.addWidget(self.prompt)
+        self.run_btn = QPushButton("Run Prompt")
+        self.run_btn.clicked.connect(self.run_prompt)
+        right_panel.addWidget(self.run_btn)
+        self.output = QTextEdit()
+        self.output.setReadOnly(True)
+        self.output.setPlaceholderText("Prompt output and errors will appear here.")
+        right_panel.addWidget(self.output)
         right_panel.addStretch(1)
 
-    def on_file_selected(self, index):
-        path = self.file_model.filePath(index)
-        if os.path.isfile(path):
-            try:
-                with open(path, 'r', encoding='utf-8') as f:
-                    code = f.read()
-                self.code_view.setPlainText(code)
-            except Exception as e:
-                self.code_view.setPlainText(f"Error reading file: {e}")
+    def populate_ui_elements(self):
+        self.ui_list.clear()
+        # Scan all .py files for PyQt UI classes
+        for root, dirs, files in os.walk(PROJECT_ROOT):
+            for fname in files:
+                if fname.endswith('.py'):
+                    path = os.path.join(root, fname)
+                    classes = find_pyqt_ui_classes(path)
+                    for name, cls in classes:
+                        self.ui_list.addItem(f"{fname}::{name}")
+                        # Store mapping for later
+                        self.ui_list.item(self.ui_list.count()-1).setData(Qt.UserRole, (path, name))
+
+    def on_ui_element_selected(self):
+        items = self.ui_list.selectedItems()
+        if not items:
+            return
+        path, class_name = items[0].data(Qt.UserRole)
+        with open(path, 'r', encoding='utf-8') as f:
+            code = f.read()
+        self.ui_code.setPlainText(code)
+        # Optionally: instantiate and show the UI (advanced, not shown here)
+
+    def save_ui_edit(self):
+        items = self.ui_list.selectedItems()
+        if not items:
+            return
+        path, class_name = items[0].data(Qt.UserRole)
+        # Backup full editor if not already
+        if not os.listdir(BACKUP_DIR):
+            backup_editor()
+        # Save edited code to user_mode/changes/ preserving folder structure
+        rel_path = os.path.relpath(path, PROJECT_ROOT)
+        save_path = os.path.join(EDITOR_ROOT, "changes", rel_path)
+        os.makedirs(os.path.dirname(save_path), exist_ok=True)
+        with open(save_path, 'w', encoding='utf-8') as f:
+            f.write(self.ui_code.toPlainText())
+        QMessageBox.information(self, "Saved", f"Changes saved to {save_path}")
+
+    def populate_logic_files(self):
+        self.logic_list.clear()
+        for root, dirs, files in os.walk(PROJECT_ROOT):
+            for fname in files:
+                if fname.endswith('.py'):
+                    path = os.path.join(root, fname)
+                    # Only include if no QWidget subclass
+                    try:
+                        with open(path, 'r', encoding='utf-8') as f:
+                            code = f.read()
+                        if 'QWidget' not in code and 'QMainWindow' not in code:
+                            self.logic_list.addItem(fname)
+                            self.logic_list.item(self.logic_list.count()-1).setData(Qt.UserRole, path)
+                    except Exception:
+                        continue
+
+    def on_logic_selected(self):
+        items = self.logic_list.selectedItems()
+        if not items:
+            return
+        path = items[0].data(Qt.UserRole)
+        with open(path, 'r', encoding='utf-8') as f:
+            code = f.read()
+        self.logic_code.setPlainText(code)
+
+    def save_logic_edit(self):
+        items = self.logic_list.selectedItems()
+        if not items:
+            return
+        path = items[0].data(Qt.UserRole)
+        if not os.listdir(BACKUP_DIR):
+            backup_editor()
+        rel_path = os.path.relpath(path, PROJECT_ROOT)
+        save_path = os.path.join(EDITOR_ROOT, "changes", rel_path)
+        os.makedirs(os.path.dirname(save_path), exist_ok=True)
+        with open(save_path, 'w', encoding='utf-8') as f:
+            f.write(self.logic_code.toPlainText())
+        QMessageBox.information(self, "Saved", f"Logic changes saved to {save_path}")
+
+    def populate_addons(self):
+        self.addons_list.clear()
+        addons_dir = os.path.join(EDITOR_ROOT, "addons")
+        # Create addons directory if it doesn't exist
+        if not os.path.exists(addons_dir):
+            os.makedirs(addons_dir, exist_ok=True)
+        for fname in os.listdir(addons_dir):
+            if fname.endswith('.py') or fname.endswith('.disabled'):
+                path = os.path.join(addons_dir, fname)
+                self.addons_list.addItem(fname)
+                self.addons_list.item(self.addons_list.count()-1).setData(Qt.UserRole, path)
+
+    def on_addon_selected(self):
+        items = self.addons_list.selectedItems()
+        if not items:
+            return
+        path = items[0].data(Qt.UserRole)
+        with open(path, 'r', encoding='utf-8') as f:
+            code = f.read()
+        self.addon_code.setPlainText(code)
+        # Update enable/disable button text
+        if path.endswith('.disabled'):
+            self.addon_enable_btn.setText("Enable Addon")
         else:
-            self.code_view.setPlainText("")
+            self.addon_enable_btn.setText("Disable Addon")
+
+    def save_addon_edit(self):
+        items = self.addons_list.selectedItems()
+        if not items:
+            return
+        path = items[0].data(Qt.UserRole)
+        with open(path, 'w', encoding='utf-8') as f:
+            f.write(self.addon_code.toPlainText())
+        QMessageBox.information(self, "Saved", f"Addon changes saved to {path}")
+
+    def toggle_addon_enabled(self):
+        items = self.addons_list.selectedItems()
+        if not items:
+            return
+        path = items[0].data(Qt.UserRole)
+        if path.endswith('.disabled'):
+            new_path = path[:-9] + '.py'
+        else:
+            new_path = path[:-3] + '.disabled'
+        os.rename(path, new_path)
+        self.populate_addons()
+        QMessageBox.information(self, "Toggled", f"Addon is now {'enabled' if new_path.endswith('.py') else 'disabled'}: {os.path.basename(new_path)}")
+
+    def generate_help_text(self):
+        return (
+            "Editor User Mode Help\n\n"
+            "- UI Elements: Edit PyQt UI code. Changes are saved to user_mode/changes/.\n"
+            "- Logic: (Coming soon) Organize and edit non-UI logic.\n"
+            "- Addons: (Coming soon) Manage user plugins/scripts in addons/.\n"
+            "- Theme/Font Editor: Launches the regular editor windows.\n"
+            "- Live Python Prompt: Run code with access to api, main_window, output.\n"
+            "- Backup: On first edit, the full editor is backed up to user_mode/changes/default.backup/.\n"
+        )
 
     def load_and_apply_profile(self, path):
         try:
@@ -279,15 +495,13 @@ class UserModeWindow(QMainWindow):
         # TODO: Apply other config sections (ui, keybindings, ai_assist, integrations)
 
     def reload_profile(self):
-        self.load_and_apply_profile(PROFILE_PATH)
+        self.load_and_apply_profile(os.path.join(EDITOR_ROOT, "user_mode", "user_profile.json"))
 
     def run_prompt(self):
         code = self.prompt.toPlainText()
         local_ctx = {
             "api": self.api,
             "main_window": self.main_window,
-            "theme_editor": self.theme_editor,
-            "font_editor": self.font_editor,
             "output": self.output
         }
         try:
@@ -304,18 +518,65 @@ class UserModeWindow(QMainWindow):
             self.output.setPlainText(str(e))
 
     def launch_theme_editor(self):
-        if self.theme_editor:
-            self.theme_editor.show()
-            self.theme_editor.raise_()
+        if self.theme_editor_path:
+            import subprocess
+            subprocess.Popen([sys.executable, self.theme_editor_path])
         else:
-            QMessageBox.information(self, "Theme Editor", "Theme editor is not available in this context.")
+            QMessageBox.information(self, "Theme Editor", "Theme editor path not set.")
 
     def launch_font_editor(self):
-        if self.font_editor:
-            self.font_editor.show()
-            self.font_editor.raise_()
+        if self.font_editor_path:
+            import subprocess
+            subprocess.Popen([sys.executable, self.font_editor_path])
         else:
-            QMessageBox.information(self, "Font Editor", "Font editor is not available in this context.")
+            QMessageBox.information(self, "Font Editor", "Font editor path not set.")
+
+    # --- Live reload and restore logic (stubs) ---
+    def reload_ui_file(self):
+        QMessageBox.information(self, "Reload", "UI file reloaded (stub). Reload the app to see changes.")
+
+    def restore_ui_from_backup(self):
+        QMessageBox.information(self, "Restore", "UI file restored from backup (stub).")
+
+    def reload_logic_file(self):
+        QMessageBox.information(self, "Reload", "Logic file reloaded (stub). Reload the app to see changes.")
+
+    def restore_logic_from_backup(self):
+        QMessageBox.information(self, "Restore", "Logic file restored from backup (stub).")
+
+    def reload_addon(self):
+        items = self.addons_list.selectedItems()
+        if not items:
+            return
+        path = items[0].data(Qt.UserRole)
+        try:
+            import importlib.util
+            spec = importlib.util.spec_from_file_location("addon_mod", path)
+            mod = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(mod)
+            QMessageBox.information(self, "Reloaded", f"Addon {os.path.basename(path)} reloaded.")
+        except Exception as e:
+            QMessageBox.critical(self, "Reload Error", str(e))
+
+    def remove_addon(self):
+        items = self.addons_list.selectedItems()
+        if not items:
+            return
+        path = items[0].data(Qt.UserRole)
+        os.remove(path)
+        self.populate_addons()
+        QMessageBox.information(self, "Removed", f"Addon {os.path.basename(path)} removed.")
+
+    def install_addon(self):
+        fname, _ = QFileDialog.getOpenFileName(self, "Select Addon Python File", "", "Python Files (*.py)")
+        if fname:
+            dest = os.path.join(EDITOR_ROOT, "addons", os.path.basename(fname))
+            shutil.copy2(fname, dest)
+            self.populate_addons()
+            QMessageBox.information(self, "Installed", f"Addon {os.path.basename(fname)} installed.")
+
+    def restore_addon_from_backup(self):
+        QMessageBox.information(self, "Restore", "Addon restored from backup (stub).")
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)
