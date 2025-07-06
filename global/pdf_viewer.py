@@ -7,9 +7,9 @@ from PyQt5.QtWidgets import (
     QPushButton, QFileDialog, QHBoxLayout, QScrollArea,
     QLineEdit, QListWidget, QDockWidget, QMessageBox,
     QTabWidget, QComboBox, QGridLayout, QAction, QMenuBar, QMenu, QStyle, QShortcut, QListWidgetItem,
-    QDialog, QDialogButtonBox, QRadioButton, QButtonGroup, QSizePolicy, QToolButton
+    QDialog, QDialogButtonBox, QRadioButton, QButtonGroup, QSizePolicy
 )
-from PyQt5.QtGui import QPixmap, QImage, QKeySequence, QFont, QColor, QPalette, QIcon
+from PyQt5.QtGui import QPixmap, QImage, QKeySequence, QFont, QColor, QPalette
 from PyQt5.QtCore import Qt, QSize, QEvent, QStandardPaths, QTimer, pyqtSignal, QObject
 from theme_manager import theme_manager_singleton, get_editor_styles
 
@@ -68,63 +68,178 @@ def set_shortcut(settings, name, keyseq):
 class SignalProxy(QObject):
     page_changed = pyqtSignal(int)
 
-class LazyPDFPageLabel(QLabel):
-    def __init__(self, pdf_tab, page_index, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.pdf_tab = pdf_tab
-        self.page_index = page_index
+class PDFPageLabel(QLabel):
+    def __init__(self, parent=None):
+        super().__init__(parent)
         self.setAlignment(Qt.AlignCenter)
-        self.setMinimumHeight(100)
-        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
-        self.setText(f"Page {page_index+1}")
-        self._pixmap = None
-        self._zoom = 1.5
-        self._loaded = False
+        self._zoom = 1.0
+        self._pdf_index = 0
 
     def set_zoom(self, zoom):
         self._zoom = zoom
-        self._loaded = False
-        self.clear()
-        self.setText(f"Page {self.page_index+1}")
-        self.load_if_visible()
 
-    def load_if_visible(self):
-        if self._loaded:
+    def set_pdf_index(self, pdf_index):
+        self._pdf_index = pdf_index
+
+class SearchScopeDialog(QDialog):
+    def __init__(self, parent, last_pages=None):
+        super().__init__(parent)
+        self.setWindowTitle("Search options")
+        self.setModal(True)
+        layout = QVBoxLayout(self)
+
+        self.scope_group = QButtonGroup(self)
+        self.radio_whole = QRadioButton('Search in whole document (this process may take some time)')
+        self.radio_current = QRadioButton('Search on current page')
+        self.radio_range = QRadioButton('Search on specific page/pages')
+        self.scope_group.addButton(self.radio_whole)
+        self.scope_group.addButton(self.radio_current)
+        self.scope_group.addButton(self.radio_range)
+
+        layout.addWidget(self.radio_whole)
+        layout.addWidget(self.radio_current)
+        layout.addWidget(self.radio_range)
+
+        self.range_input = QLineEdit()
+        self.range_input.setPlaceholderText("e.g. 1-6, 3, 5-7,10")
+        self.range_input.setEnabled(False)
+        layout.addWidget(self.range_input)
+        self.radio_range.toggled.connect(self.range_input.setEnabled)
+
+        self.radio_whole.setChecked(True)
+        if last_pages:
+            self.range_input.setText(last_pages)
+
+        button_box = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        button_box.accepted.connect(self.accept)
+        button_box.rejected.connect(self.reject)
+        layout.addWidget(button_box)
+
+    def get_scope(self):
+        if self.radio_whole.isChecked():
+            return 'whole', None
+        if self.radio_current.isChecked():
+            return 'current', None
+        if self.radio_range.isChecked():
+            return 'range', self.range_input.text().strip()
+        return None, None
+
+class ImprovedOverview(QWidget):
+    def __init__(self, tab, window_size=7):
+        super().__init__()
+        self.tab = tab
+        self.window_size = window_size
+        self.layout = QGridLayout()  # Only create, do not set as widget layout
+        self.thumb_cache = {}
+        self.page_count = 0
+        self.cols = 1
+        self.thumb_size = QSize(180, 250)
+        self.scroll_area = None
+
+        # Navigation arrows for overview panel
+        self.prev_button = QPushButton("◀")
+        self.prev_button.setFixedWidth(28)
+        self.prev_button.setFont(QFont("Segoe UI", 10, QFont.Bold))
+        self.next_button = QPushButton("▶")
+        self.next_button.setFixedWidth(28)
+        self.next_button.setFont(QFont("Segoe UI", 10, QFont.Bold))
+        self.prev_button.clicked.connect(self.prev_window)
+        self.next_button.clicked.connect(self.next_window)
+        self.arrow_layout = QHBoxLayout()
+        self.arrow_layout.setContentsMargins(0,0,0,0)
+        self.arrow_layout.setSpacing(2)
+        self.arrow_layout.addWidget(self.prev_button)
+        self.arrow_layout.addStretch()
+        self.arrow_layout.addWidget(self.next_button)
+        self.main_layout = QVBoxLayout(self)
+        self.main_layout.setSpacing(2)
+        self.main_layout.setContentsMargins(0,0,0,0)
+        self.main_layout.addLayout(self.arrow_layout)
+        self.main_layout.addLayout(self.layout)
+        self.current_center = 0
+
+    def set_tab(self, tab):
+        self.tab = tab
+        self.refresh()
+
+    def set_scroll_area(self, scroll_area):
+        self.scroll_area = scroll_area
+
+    def update_layout_params(self, cols, thumb_size):
+        self.cols = cols
+        self.thumb_size = thumb_size
+        self.refresh()
+
+    def center_on_page(self, center_page):
+        self.refresh(center_page)
+
+    def prev_window(self):
+        if not self.tab: return
+        center = max(self.current_center - self.window_size, 0)
+        self.refresh(center)
+
+    def next_window(self):
+        if not self.tab: return
+        if not self.tab.doc: return
+        lastpage = self.tab.doc.page_count-1
+        center = min(self.current_center + self.window_size, lastpage)
+        self.refresh(center)
+
+    def refresh(self, center_page=None):
+        for i in reversed(range(self.layout.count())):
+            widget = self.layout.itemAt(i).widget()
+            if widget:
+                self.layout.removeWidget(widget)
+                widget.deleteLater()
+        self.thumb_cache.clear()
+        if not self.tab or not self.tab.doc:
             return
-        if not self.isVisible():
-            return
-        try:
-            page = self.pdf_tab.doc.load_page(self.page_index)
-            # Render to fit scroll area width
-            target_width = self.pdf_tab.scroll_area.viewport().width() - 20
-            matrix = fitz.Matrix(self._zoom, self._zoom)
-            pix = page.get_pixmap(matrix=matrix, alpha=False)
-            scale = target_width / pix.width if pix.width > 0 else 1.0
-            if scale != 1.0:
-                matrix = fitz.Matrix(self._zoom * scale, self._zoom * scale)
-                pix = page.get_pixmap(matrix=matrix, alpha=False)
-            img = QImage(pix.samples, pix.width, pix.height, pix.stride, QImage.Format_RGB888)
-            pixmap = QPixmap.fromImage(img)
-            self.setPixmap(pixmap)
-            self.setFixedHeight(pixmap.height())
-            self._pixmap = pixmap
-            self._loaded = True
-        except Exception as e:
-            self.setText(f"Error loading page {self.page_index+1}")
-
-    def unload(self):
-        self._pixmap = None
-        self.clear()
-        self.setText(f"Page {self.page_index+1}")
-        self._loaded = False
-
-    def showEvent(self, event):
-        self.load_if_visible()
-        super().showEvent(event)
-
-    def hideEvent(self, event):
-        self.unload()
-        super().hideEvent(event)
+        self.page_count = self.tab.doc.page_count
+        if center_page is None:
+            center_page = self.tab.current_page
+        self.current_center = center_page
+        window_radius = self.window_size // 2
+        start_page = max(center_page - window_radius, 0)
+        end_page = min(center_page + window_radius + 1, self.page_count)
+        # If at start or end, always fill window
+        if end_page - start_page < self.window_size:
+            if start_page == 0:
+                end_page = min(self.window_size, self.page_count)
+            elif end_page == self.page_count:
+                start_page = max(self.page_count - self.window_size, 0)
+        row, col = 0, 0
+        for page_num in range(start_page, end_page):
+            preview_label = QLabel()
+            preview_label.setFixedSize(self.thumb_size)
+            preview_label.setAlignment(Qt.AlignCenter)
+            preview_label.setText("Loading...")
+            def load_thumb(page_num=page_num, label=preview_label):
+                pix = self.tab.get_page_preview(page_num, self.thumb_size)
+                if pix:
+                    label.setPixmap(pix)
+                    label.setText("")
+                    if page_num == center_page:
+                        label.setStyleSheet("border: 3px solid #81a1c1; border-radius: 7px;")
+                    else:
+                        label.setStyleSheet("border: 1px solid #444; border-radius: 7px;")
+            QTimer.singleShot(0, load_thumb)
+            page_label = QLabel(f"Page {page_num+1}")
+            page_label.setAlignment(Qt.AlignCenter)
+            container = QWidget()
+            container_layout = QVBoxLayout()
+            container_layout.setContentsMargins(2, 2, 2, 2)
+            container_layout.setSpacing(2)
+            container_layout.addWidget(preview_label)
+            container_layout.addWidget(page_label)
+            container.setLayout(container_layout)
+            def make_press_event(page):
+                return lambda event: self.tab.parent_viewer.overview_navigate(page)
+            container.mousePressEvent = make_press_event(page_num)
+            self.layout.addWidget(container, row, col)
+            col += 1
+            if col >= self.cols:
+                col = 0
+                row += 1
 
 class PDFTab(QWidget):
     def __init__(self, parent=None, file_path=None, settings=None, signal_proxy=None):
@@ -134,87 +249,143 @@ class PDFTab(QWidget):
         self.current_page = 0
         self.zoom = 1.5
         self.bookmarks = {}
+        self.page_labels = []
+        self.page_cache = {}
+        self._preview_cache = {}
+        self.search_results = []
+        self.current_search_index = -1
         self.file_path = file_path
         self.settings = settings or {}
         self.persist_key = self.file_path if self.file_path else ""
         self.signal_proxy = signal_proxy or SignalProxy()
-        self.page_labels = []
-        self._scroll_timer = QTimer(self)
-        self._scroll_timer.setSingleShot(True)
-        self._scroll_timer.timeout.connect(self.lazy_load_visible_pages)
+        self.mode = 1
+        self.animating = False
+        self.last_search_pages = ""
         self.init_ui()
         self.restore_settings()
 
     def init_ui(self):
-        # Minimal top toolbar
-        toolbar = QHBoxLayout()
-        toolbar.setSpacing(2)
-        toolbar.setContentsMargins(2, 2, 2, 2)
-        def make_btn(icon, tooltip, slot, text=None):
-            btn = QToolButton()
-            if icon:
-                btn.setIcon(QIcon(icon))
-            if text:
-                btn.setText(text)
-            btn.setToolTip(tooltip)
-            btn.setFixedSize(28, 28)
-            btn.clicked.connect(slot)
-            return btn
-        open_btn = make_btn(self.style().standardIcon(QStyle.SP_DialogOpenButton), "Open PDF", self.parent_viewer.open_pdf)
-        prev_btn = make_btn(self.style().standardIcon(QStyle.SP_ArrowLeft), "Previous Page", self.prev_page)
-        next_btn = make_btn(self.style().standardIcon(QStyle.SP_ArrowRight), "Next Page", self.next_page)
-        zoom_out_btn = make_btn(None, "Zoom Out", self.zoom_out, text="−")
-        zoom_in_btn = make_btn(None, "Zoom In", self.zoom_in, text="+")
+        font_button = QFont("Segoe UI", 10, QFont.Bold)
+        font_label = QFont("Segoe UI", 11, QFont.Bold)
+        font_input = QFont("Segoe UI", 10)
+
+        self.label1 = PDFPageLabel()
+        self.label2 = PDFPageLabel()
+        self.page_labels = [self.label1, self.label2]
+        for idx, label in enumerate(self.page_labels):
+            label.hide()
+            label.set_pdf_index(idx)
+            label.setFont(font_label)
         self.page_label = QLabel("Page: 0 / 0")
-        self.page_label.setFixedWidth(80)
         self.page_label.setAlignment(Qt.AlignCenter)
+        self.page_label.setFont(font_label)
+        self.page_label.setStyleSheet("padding: 0 8px;")
+
+        # Compact navigation bar
+        self.prev_button = QPushButton("◀")
+        self.prev_button.setFont(font_button)
+        self.prev_button.setFixedSize(36, 28)
+        self.next_button = QPushButton("▶")
+        self.next_button.setFont(font_button)
+        self.next_button.setFixedSize(36, 28)
+        self.zoom_out_btn = QPushButton("−")
+        self.zoom_out_btn.setFont(font_button)
+        self.zoom_out_btn.setFixedSize(32, 28)
+        self.zoom_in_btn = QPushButton("+")
+        self.zoom_in_btn.setFont(font_button)
+        self.zoom_in_btn.setFixedSize(32, 28)
+        self.pages_combo = QComboBox()
+        self.pages_combo.setFont(font_button)
+        self.pages_combo.addItems(["1 page", "2 pages"])
+        self.pages_combo.setFixedSize(80, 28)
         self.page_input = QLineEdit()
         self.page_input.setPlaceholderText("Go to page")
-        self.page_input.setFixedWidth(60)
-        self.page_input.returnPressed.connect(self.goto_page)
+        self.page_input.setFixedSize(70, 28)
+        self.page_input.setFont(font_input)
         self.search_input = QLineEdit()
-        self.search_input.setPlaceholderText("Search")
-        self.search_input.setFixedWidth(90)
-        # (Search logic can be added here)
-        toolbar.addWidget(open_btn)
-        toolbar.addWidget(prev_btn)
-        toolbar.addWidget(next_btn)
-        toolbar.addWidget(self.page_label)
-        toolbar.addWidget(self.page_input)
-        toolbar.addWidget(zoom_out_btn)
-        toolbar.addWidget(zoom_in_btn)
-        toolbar.addWidget(self.search_input)
-        toolbar.addStretch(1)
+        self.search_input.setPlaceholderText("Search text")
+        self.search_input.setFixedSize(90, 28)
+        self.search_input.setFont(font_input)
+        self.bookmark_button = QPushButton("Bookmark")
+        self.bookmark_button.setFont(font_button)
+        self.bookmark_button.setFixedSize(90, 28)
+        self.overview_button = QPushButton("Overview")
+        self.overview_button.setFont(font_button)
+        self.overview_button.setFixedSize(90, 28)
 
-        # Scrollable area for all pages
+        self.pages_combo.currentIndexChanged.connect(self.change_page_count)
+        self.prev_button.clicked.connect(self.prev_page)
+        self.next_button.clicked.connect(self.next_page)
+        self.zoom_out_btn.clicked.connect(self.zoom_out)
+        self.zoom_in_btn.clicked.connect(self.zoom_in)
+        self.page_input.returnPressed.connect(self.goto_page)
+        self.search_input.returnPressed.connect(self.search_with_menu)
+        self.bookmark_button.clicked.connect(self.add_bookmark)
+        self.overview_button.clicked.connect(self.toggle_overview)
+
+        nav_layout = QHBoxLayout()
+        nav_layout.setSpacing(6)
+        nav_layout.setContentsMargins(4, 2, 4, 2)
+        nav_layout.addWidget(self.prev_button)
+        nav_layout.addWidget(self.next_button)
+        nav_layout.addWidget(self.page_label)
+        nav_layout.addWidget(self.zoom_out_btn)
+        nav_layout.addWidget(self.zoom_in_btn)
+        nav_layout.addWidget(self.pages_combo)
+        nav_layout.addWidget(self.page_input)
+        nav_layout.addWidget(self.search_input)
+        nav_layout.addWidget(self.bookmark_button)
+        nav_layout.addWidget(self.overview_button)
+        nav_layout.addStretch(1)
+
+        self.image_layout = QHBoxLayout()
+        self.image_layout.setSpacing(2)
+        for label in self.page_labels:
+            self.image_layout.addWidget(label)
         self.scroll_area = QScrollArea()
+        scroll_widget = QWidget()
+        scroll_widget.setLayout(self.image_layout)
+        self.scroll_area.setWidget(scroll_widget)
         self.scroll_area.setWidgetResizable(True)
         self.scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOn)
-        self.scroll_widget = QWidget()
-        self.vbox = QVBoxLayout(self.scroll_widget)
-        self.vbox.setSpacing(10)
-        self.vbox.setContentsMargins(10, 10, 10, 10)
-        self.scroll_area.setWidget(self.scroll_widget)
-        self.vbox.addStretch(1)
-
+        self.scroll_area.setContentsMargins(0,0,0,0)
+        self.search_results_list = QListWidget()
+        self.search_results_list.setMaximumWidth(180)
+        self.search_results_list.itemClicked.connect(self.search_result_clicked)
+        self.search_results_list.hide()
         main_layout = QVBoxLayout()
-        main_layout.setSpacing(0)
+        main_layout.setSpacing(2)
         main_layout.setContentsMargins(0,0,0,0)
-        main_layout.addLayout(toolbar)
-        main_layout.addWidget(self.scroll_area)
+        main_layout.addLayout(nav_layout)
+        scroll_and_results = QHBoxLayout()
+        scroll_and_results.setSpacing(2)
+        scroll_and_results.addWidget(self.scroll_area)
+        scroll_and_results.addWidget(self.search_results_list)
+        main_layout.addLayout(scroll_and_results)
         self.setLayout(main_layout)
         self.setStyleSheet("background: #23272e;")
 
-        # Connect scroll event for lazy loading
-        self.scroll_area.verticalScrollBar().valueChanged.connect(self._on_scroll)
-        self.scroll_area.viewport().installEventFilter(self)
+    def eventFilter(self, source, event):
+        if event.type() == QEvent.Wheel and source is self.scroll_area:
+            delta = event.angleDelta().y()
+            if delta > 0:
+                self.prev_page()
+            else:
+                self.next_page()
+            if self.parent_viewer:
+                self.parent_viewer.sync_overview_to_pdf()
+            return True
+        return super().eventFilter(source, event)
 
-    def eventFilter(self, obj, event):
-        if obj is self.scroll_area.viewport() and event.type() == QEvent.Resize:
-            for label in self.page_labels:
-                label._loaded = False
-            self.lazy_load_visible_pages()
-        return super().eventFilter(obj, event)
+    def change_page_count(self, index):
+        self.mode = index + 1
+        self.display_pages()
+        self.save_settings()
+        if self.parent_viewer:
+            self.parent_viewer.update_overview_layout()
+
+    def get_page_count(self):
+        return self.mode
 
     def open_pdf(self, file_name):
         try:
@@ -223,100 +394,239 @@ class PDFTab(QWidget):
             self.bookmarks = {}
             self.file_path = file_name
             self.persist_key = file_name
-            self.page_labels = []
-            # Remove old widgets
-            while self.vbox.count():
-                item = self.vbox.takeAt(0)
-                widget = item.widget()
-                if widget:
-                    widget.deleteLater()
-            # Add lazy page labels
-            for i in range(len(self.doc)):
-                label = LazyPDFPageLabel(self, i)
-                label.set_zoom(self.zoom)
-                self.vbox.insertWidget(self.vbox.count()-1, label)
-                self.page_labels.append(label)
-            self.page_label.setText(f"Page: 1 / {len(self.doc)}")
-            self.lazy_load_visible_pages()
+            self.page_cache = {}
+            self._preview_cache = {}
+            self.restore_settings()
+            if self.parent_viewer:
+                self.parent_viewer.bookmark_list.clear()
+                self.parent_viewer.refresh_bookmark_preview()
+                self.parent_viewer.set_overview_tab(self)
+            self.display_pages()
             return True
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Failed to open PDF: {str(e)}")
             return False
 
-    def _on_scroll(self):
-        self._scroll_timer.start(100)  # Defer rendering until scrolling stops
-
-    def lazy_load_visible_pages(self):
-        if not self.page_labels:
+    def display_pages(self, direction=0):
+        if not self.doc:
             return
-        scroll_value = self.scroll_area.verticalScrollBar().value()
-        viewport_height = self.scroll_area.viewport().height()
-        # Find which pages are visible
-        visible_pages = []
-        for i, label in enumerate(self.page_labels):
-            y = label.pos().y()
-            if (y + label.height() > scroll_value - 200) and (y < scroll_value + viewport_height + 200):
-                visible_pages.append(i)
-        # Only load ±2 pages around visible
-        to_load = set()
-        for i in visible_pages:
-            for j in range(max(0, i-2), min(len(self.page_labels), i+3)):
-                to_load.add(j)
-        for i, label in enumerate(self.page_labels):
-            if i in to_load:
-                label.load_if_visible()
+        page_count = self.get_page_count()
+        total_pages = len(self.doc)
+        self.page_label.setText(f"{self.current_page + 1}-{min(self.current_page + page_count, total_pages)} / {total_pages}")
+        for i in range(2):
+            idx = self.current_page + i
+            if i < page_count and idx < total_pages:
+                self.smooth_show_page(self.page_labels[i], idx, direction)
+                self.page_labels[i].show()
+                self.page_labels[i].set_zoom(self.zoom)
+                self.page_labels[i].set_pdf_index(idx)
             else:
-                label.unload()
-        # Update current page label
-        if visible_pages:
-            self.current_page = visible_pages[0]
-            self.page_label.setText(f"Page: {self.current_page+1} / {len(self.doc)}")
+                self.page_labels[i].clear()
+                self.page_labels[i].hide()
+        self.save_settings()
+        if self.parent_viewer:
+            self.parent_viewer.sync_overview_to_pdf()
 
-    def prev_page(self):
-        if self.doc and self.current_page > 0:
-            self.current_page -= 1
-            self.scroll_to_page(self.current_page)
+    def smooth_show_page(self, label, index, direction=0):
+        page = self.doc.load_page(index)
+        matrix = fitz.Matrix(self.zoom, self.zoom)
+        pix = page.get_pixmap(matrix=matrix, alpha=False)
+        img = QImage(pix.samples, pix.width, pix.height, pix.stride, QImage.Format_RGB888)
+        pixmap = QPixmap.fromImage(img)
+        label.setPixmap(pixmap)
+        label.setStyleSheet("background: #222; border-radius: 7px;")
 
     def next_page(self):
-        if self.doc and self.current_page < len(self.doc) - 1:
-            self.current_page += 1
-            self.scroll_to_page(self.current_page)
+        if self.doc:
+            page_count = self.get_page_count()
+            if self.current_page + page_count < len(self.doc):
+                self.current_page += page_count
+                self.display_pages(direction=1)
+            else:
+                self.current_page = len(self.doc) - page_count
+                if self.current_page < 0:
+                    self.current_page = 0
+                self.display_pages(direction=1)
 
-    def scroll_to_page(self, page_index):
-        if 0 <= page_index < len(self.page_labels):
-            label = self.page_labels[page_index]
-            self.scroll_area.ensureWidgetVisible(label)
-            self.page_label.setText(f"Page: {page_index+1} / {len(self.doc)}")
+    def prev_page(self):
+        if self.doc:
+            page_count = self.get_page_count()
+            if self.current_page - page_count >= 0:
+                self.current_page -= page_count
+                self.display_pages(direction=-1)
+            else:
+                self.current_page = 0
+                self.display_pages(direction=-1)
 
     def zoom_in(self):
-        self.zoom += 0.2
-        for label in self.page_labels:
-            label.set_zoom(self.zoom)
-        self.lazy_load_visible_pages()
+        self.zoom += 0.1
+        if self.zoom > 5.0:
+            self.zoom = 5.0
+        self.display_pages()
+        if self.parent_viewer:
+            self.parent_viewer.update_overview_layout()
 
     def zoom_out(self):
-        self.zoom = max(0.2, self.zoom - 0.2)
-        for label in self.page_labels:
-            label.set_zoom(self.zoom)
-        self.lazy_load_visible_pages()
+        self.zoom -= 0.1
+        if self.zoom < 0.2:
+            self.zoom = 0.2
+        self.display_pages()
+        if self.parent_viewer:
+            self.parent_viewer.update_overview_layout()
 
     def goto_page(self):
+        if self.doc:
+            try:
+                page_num = int(self.page_input.text()) - 1
+                if 0 <= page_num < len(self.doc):
+                    self.current_page = page_num
+                    self.display_pages()
+                else:
+                    QMessageBox.warning(self, "Invalid Page", "Page number out of range.")
+            except ValueError:
+                QMessageBox.warning(self, "Invalid Input", "Please enter a valid page number.")
+
+    def search_with_menu(self):
+        dlg = SearchScopeDialog(self, last_pages=self.last_search_pages)
+        if dlg.exec_() == QDialog.Accepted:
+            scope, value = dlg.get_scope()
+            if scope == 'whole':
+                self.search_text(mode='all')
+            elif scope == 'current':
+                self.search_text(mode='current')
+            elif scope == 'range':
+                self.last_search_pages = value
+                self.search_text(mode='range', pages_input=value)
+
+    def search_text(self, mode='all', pages_input=None):
+        if self.doc:
+            query = self.search_input.text()
+            if not query:
+                return
+            self.search_results = []
+            self.search_results_list.clear()
+            if mode == 'current':
+                pages = [self.current_page]
+            elif mode == 'range' and pages_input:
+                pages = []
+                for part in pages_input.split(','):
+                    part = part.strip()
+                    if '-' in part:
+                        try:
+                            a, b = map(int, part.split('-'))
+                            pages.extend(list(range(a-1, b)))
+                        except Exception:
+                            pass
+                    elif part.isdigit():
+                        pages.append(int(part) - 1)
+                pages = [p for p in pages if 0 <= p < len(self.doc)]
+                pages = sorted(set(pages))
+            else:
+                pages = range(len(self.doc))
+            for page_num in pages:
+                page = self.doc.load_page(page_num)
+                text_instances = page.search_for(query)
+                for inst in text_instances:
+                    snippet = self._get_text_snippet(page, inst, query)
+                    item = QListWidgetItem(f"Page {page_num+1}: {snippet}")
+                    item.setData(Qt.UserRole, (page_num, inst))
+                    self.search_results_list.addItem(item)
+                    self.search_results.append((page_num, inst))
+            if self.search_results:
+                self.current_search_index = 0
+                self.highlight_search_result()
+                self.search_results_list.show()
+            else:
+                QMessageBox.information(self, "Search", "Text not found.")
+                self.search_results_list.hide()
+
+    def _get_text_snippet(self, page, rect, query):
+        text = page.get_textbox(rect)
+        if not text:
+            text = page.get_text()
+        idx = text.lower().find(query.lower())
+        if idx != -1:
+            start = max(0, idx-20)
+            end = min(len(text), idx+len(query)+20)
+            return text[start:end].replace('\n', ' ')
+        return text.strip()[:50]
+
+    def search_result_clicked(self, item):
+        page_num, rect = item.data(Qt.UserRole)
+        self.current_page = page_num
+        self.display_pages()
+
+    def highlight_search_result(self):
+        if not self.search_results or self.current_search_index < 0:
+            return
+        page_num, rect = self.search_results[self.current_search_index]
+        self.current_page = page_num
+        self.display_pages()
+        self.search_results_list.setCurrentRow(self.current_search_index)
+
+    def add_bookmark(self):
+        if self.doc and self.parent_viewer:
+            page_num = self.current_page
+            title = f"Page {page_num + 1}"
+            if title not in self.bookmarks:
+                self.bookmarks[title] = page_num
+                self.parent_viewer.bookmark_list.addItem(title)
+                self.parent_viewer.refresh_bookmark_preview()
+
+    def toggle_overview(self):
+        if self.parent_viewer:
+            self.parent_viewer.toggle_overview(tab=self)
+
+    def get_page_preview(self, page_num, size=QSize(100, 140)):
+        key = (page_num, size.width(), size.height(), round(self.zoom, 2))
+        if key in self._preview_cache:
+            return self._preview_cache[key]
+        if not self.doc or page_num >= len(self.doc):
+            return None
         try:
-            page = int(self.page_input.text()) - 1
-            if 0 <= page < len(self.page_labels):
-                self.current_page = page
-                self.scroll_to_page(page)
+            page = self.doc.load_page(page_num)
+            pix = page.get_pixmap(matrix=fitz.Matrix(size.width()/page.rect.width, size.height()/page.rect.height))
+            mode = QImage.Format_RGBA8888 if pix.alpha else QImage.Format_RGB888
+            img = QImage(pix.samples, pix.width, pix.height, pix.stride, mode).copy()
+            pixmap = QPixmap.fromImage(img)
+            pixmap = pixmap.scaled(size, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+            self._preview_cache[key] = pixmap
+            return pixmap
         except Exception:
-            pass
+            return None
+
+    def save_settings(self):
+        if not self.file_path:
+            return
+        doc_settings = self.settings.get("documents", {})
+        doc_settings[self.file_path] = {
+            "zoom": self.zoom,
+            "current_page": self.current_page,
+            "pages_layout": self.mode - 1
+        }
+        self.settings["documents"] = doc_settings
+        save_settings(self.settings)
 
     def restore_settings(self):
-        pass
+        if not self.file_path:
+            return
+        doc_settings = self.settings.get("documents", {}).get(self.file_path, {})
+        if doc_settings:
+            self.zoom = doc_settings.get("zoom", 1.5)
+            self.current_page = doc_settings.get("current_page", 0)
+            pages_layout = doc_settings.get("pages_layout", 0)
+            self.pages_combo.setCurrentIndex(pages_layout)
+            self.mode = pages_layout + 1
+        else:
+            self.pages_combo.setCurrentIndex(0)
+            self.mode = 1
 
 class PDFViewer(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Minimalist PDF Viewer")
         self.setGeometry(100, 100, 1000, 700)
+        # Theme integration
         theme_data = theme_manager_singleton.get_theme()
         self.set_theme(theme_data)
         theme_manager_singleton.themeChanged.connect(self.set_theme)
@@ -344,6 +654,17 @@ class PDFViewer(QMainWindow):
         self.bookmark_dock.setMinimumWidth(160)
         self.bookmark_dock.setMaximumWidth(200)
         self.addDockWidget(Qt.LeftDockWidgetArea, self.bookmark_dock)
+        self.overview_dock = QDockWidget("Overview", self)
+        self.overview_tab = None
+        self.overview_scroll = QScrollArea()
+        self.overview_widget = ImprovedOverview(None, window_size=7)
+        self.overview_scroll.setWidget(self.overview_widget)
+        self.overview_scroll.setWidgetResizable(True)
+        self.overview_dock.setWidget(self.overview_scroll)
+        self.overview_dock.setMinimumWidth(220)
+        self.overview_dock.setMaximumWidth(800)
+        self.addDockWidget(Qt.RightDockWidgetArea, self.overview_dock)
+        self.overview_dock.hide()
         self.fullscreen = False
         self.setup_shortcuts()
 
@@ -394,6 +715,9 @@ class PDFViewer(QMainWindow):
         self.toggle_bookmarks_action.setChecked(True)
         self.toggle_bookmarks_action.triggered.connect(self._toggle_bookmarks)
         view_menu.addAction(self.toggle_bookmarks_action)
+        self.toggle_overview_action = QAction("Show/Hide Overview", self, checkable=True)
+        self.toggle_overview_action.triggered.connect(lambda: self.toggle_overview())
+        view_menu.addAction(self.toggle_overview_action)
         self.fullscreen_action = QAction("Toggle Full Screen", self)
         self.fullscreen_action.setShortcut(QKeySequence("F11"))
         self.fullscreen_action.triggered.connect(self.toggle_fullscreen)
@@ -433,12 +757,15 @@ class PDFViewer(QMainWindow):
         if tab.open_pdf(file_name):
             self.tab_widget.addTab(tab, os.path.basename(file_name))
             self.tab_widget.setCurrentWidget(tab)
+            self.set_overview_tab(tab)
             self.refresh_bookmark_preview()
 
     def close_tab(self, index):
         self.tab_widget.removeTab(index)
         if self.tab_widget.count() == 0:
             self.bookmark_list.clear()
+            self.overview_widget.set_tab(None)
+            self.overview_widget.refresh()
             self.bookmark_preview.setText("No bookmarks")
 
     def get_current_tab(self):
@@ -449,7 +776,57 @@ class PDFViewer(QMainWindow):
         if tab and tab.doc:
             page_num = tab.bookmarks.get(item.text(), 0)
             tab.current_page = page_num
-            tab.scroll_to_page(page_num)
+            tab.display_pages()
+            self.sync_overview_to_pdf()
+
+    def toggle_overview(self, tab=None):
+        if self.overview_dock.isVisible():
+            self.overview_dock.hide()
+            self.toggle_overview_action.setChecked(False)
+        else:
+            self.overview_dock.show()
+            self.toggle_overview_action.setChecked(True)
+            if tab is None:
+                tab = self.get_current_tab()
+            if tab:
+                self.set_overview_tab(tab)
+
+    def set_overview_tab(self, tab):
+        self.overview_tab = tab
+        cols = 1 if tab.mode == 1 else 2
+        thumb_size = QSize(180, 250) if cols == 1 else QSize(120, 160)
+        self.overview_widget.set_tab(tab)
+        self.overview_widget.update_layout_params(cols, thumb_size)
+        self.overview_widget.set_scroll_area(self.overview_scroll)
+        self.sync_overview_to_pdf()
+
+    def update_overview_layout(self):
+        tab = self.get_current_tab()
+        if tab:
+            self.set_overview_tab(tab)
+
+    def sync_overview_to_pdf(self):
+        tab = self.get_current_tab()
+        if not tab or not tab.doc or not self.overview_tab:
+            return
+        self.overview_widget.center_on_page(tab.current_page)
+
+    def overview_navigate(self, page_num):
+        tab = self.get_current_tab()
+        if tab and tab.doc:
+            tab.current_page = page_num
+            tab.display_pages()
+
+    def update_recent_files_menu(self):
+        self.recent_menu.clear()
+        recent_files = self.settings.get("recent_files", [])
+        for path in recent_files:
+            if os.path.isfile(path):
+                action = QAction(os.path.basename(path), self)
+                action.setToolTip(path)
+                action.triggered.connect(lambda checked, p=path: self.add_pdf_tab(p))
+                self.recent_menu.addAction(action)
+        self.recent_menu.setEnabled(bool(recent_files))
 
     def toggle_fullscreen(self):
         if not self.fullscreen:
@@ -560,17 +937,6 @@ class PDFViewer(QMainWindow):
             self.bookmark_preview.setText(bookmarks)
         else:
             self.bookmark_preview.setText("No bookmarks")
-
-    def update_recent_files_menu(self):
-        self.recent_menu.clear()
-        recent_files = self.settings.get("recent_files", [])
-        for path in recent_files:
-            if os.path.isfile(path):
-                action = QAction(os.path.basename(path), self)
-                action.setToolTip(path)
-                action.triggered.connect(lambda checked, p=path: self.add_pdf_tab(p))
-                self.recent_menu.addAction(action)
-        self.recent_menu.setEnabled(bool(recent_files))
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
