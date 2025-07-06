@@ -26,6 +26,7 @@ def save_themes(themes):
     return save_custom_themes(custom_themes)
 
 def load_user_prefs():
+    """Load user preferences, including 'visual_style' (classic/modern) if present."""
     if os.path.exists(USER_PREFS_PATH):
         try:
             with open(USER_PREFS_PATH, "r") as f:
@@ -36,6 +37,7 @@ def load_user_prefs():
     return {}
 
 def save_user_prefs(prefs):
+    """Save user preferences, including 'visual_style' (classic/modern) if present."""
     try:
         with open(USER_PREFS_PATH, "w") as f:
             json.dump(prefs, f, indent=2)
@@ -76,6 +78,267 @@ def get_editor_styles(theme_data):
     }}
     """
     return style
+
+def get_menu_bar_styles(theme_data):
+    """Get menu bar styling based on theme data"""
+    palette_data = theme_data.get("palette", {})
+    
+    bg_color = palette_data.get("window", "#2b2b2b")
+    text_color = palette_data.get("window_text", "#ffffff")
+    button_bg = palette_data.get("button", "#353535")
+    button_text = palette_data.get("button_text", "#ffffff")
+    highlight_bg = palette_data.get("highlight", "#2a82da")
+    highlight_text = palette_data.get("highlight_text", "#ffffff")
+    
+    menu_style = f"""
+    QMenuBar {{
+        background-color: {bg_color};
+        color: {text_color};
+        border-bottom: 1px solid {button_bg};
+    }}
+    QMenuBar::item {{
+        background-color: transparent;
+        color: {text_color};
+        padding: 4px 8px;
+    }}
+    QMenuBar::item:selected {{
+        background-color: {highlight_bg};
+        color: {highlight_text};
+    }}
+    QMenuBar::item:pressed {{
+        background-color: {highlight_bg};
+        color: {highlight_text};
+    }}
+    QMenu {{
+        background-color: {bg_color};
+        color: {text_color};
+        border: 1px solid {button_bg};
+    }}
+    QMenu::item {{
+        background-color: transparent;
+        color: {text_color};
+        padding: 4px 20px;
+    }}
+    QMenu::item:selected {{
+        background-color: {highlight_bg};
+        color: {highlight_text};
+    }}
+    QMenu::separator {{
+        height: 1px;
+        background-color: {button_bg};
+        margin: 2px 4px;
+    }}
+    """
+    return menu_style
+
+def get_separator_styles(theme_data):
+    """Get separator styling based on theme data"""
+    palette_data = theme_data.get("palette", {})
+    separator_color = palette_data.get("mid", "#3c3c3c")
+    
+    separator_style = f"""
+    QSplitter::handle {{
+        background-color: {separator_color};
+        border: none;
+    }}
+    QSplitter::handle:horizontal {{
+        width: 1px;
+    }}
+    QSplitter::handle:vertical {{
+        height: 1px;
+    }}
+    """
+    return separator_style
+
+def get_tab_bar_styles(theme_data):
+    palette = theme_data.get("palette", {})
+    editor = theme_data.get("editor", {})
+    bg = palette.get("window", "#2b2b2b")
+    fg = palette.get("window_text", "#ffffff")
+    border = palette.get("mid", "#3c3c3c")
+    selected_bg = palette.get("highlight", "#2a82da")
+    selected_fg = palette.get("highlight_text", "#ffffff")
+    tab_bg = editor.get("background", bg)
+    tab_fg = editor.get("foreground", fg)
+    
+    return f'''
+    QTabBar, QTabWidget::pane {{
+        background: {bg};
+        color: {fg};
+        border: none;
+    }}
+    QTabBar::tab {{
+        background: {tab_bg};
+        color: {tab_fg};
+        border: 1px solid {border};
+        border-bottom: none;
+        padding: 6px 18px 6px 18px;
+        border-top-left-radius: 8px;
+        border-top-right-radius: 8px;
+        margin-right: 2px;
+        min-width: 80px;
+    }}
+    QTabBar::tab:selected, QTabBar::tab:hover {{
+        background: {selected_bg};
+        color: {selected_fg};
+        border: 1.5px solid {selected_bg};
+    }}
+    QTabBar::tab:!selected {{
+        margin-top: 2px;
+    }}
+    QTabWidget::pane {{
+        border-top: 2px solid {border};
+        top: -0.5em;
+    }}
+    '''
+
+def get_classic_styles(theme_data):
+    palette = theme_data["palette"]
+    editor = theme_data["editor"]
+    return f'''
+    QMainWindow {{
+        background: {palette['base']};
+    }}
+    QMenuBar {{
+        background: #e4e4e4;
+        color: #222;
+        border-bottom: 1px solid #b0b0b0;
+    }}
+    QMenuBar::item {{
+        background: transparent;
+        color: #222;
+        padding: 4px 12px;
+    }}
+    QMenuBar::item:selected {{
+        background: #cce6ff;
+        color: #000;
+    }}
+    QMenu {{
+        background: #e4e4e4;
+        color: #222;
+        border: 1px solid #b0b0b0;
+    }}
+    QMenu::item:selected {{
+        background: #cce6ff;
+        color: #000;
+    }}
+    QTabBar::tab {{
+        background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #f6f6f6, stop:1 #d0d0d0);
+        color: #222;
+        border: 1px solid #b0b0b0;
+        border-bottom: none;
+        border-top-left-radius: 0px;
+        border-top-right-radius: 0px;
+        min-width: 48px;
+        padding: 3px 10px;
+    }}
+    QTabBar::tab:selected {{
+        background: #cce6ff;
+        color: #000;
+        border: 1.5px solid #3399ff;
+    }}
+    QPushButton {{
+        background: #e4e4e4;
+        border: 1px solid #b0b0b0;
+        border-radius: 2px;
+        padding: 4px 12px;
+        color: #222;
+    }}
+    QPushButton:hover {{
+        background: #cce6ff;
+    }}
+    QScrollBar:vertical, QScrollBar:horizontal {{
+        background: #e4e4e4;
+        width: 18px;
+        margin: 0px;
+        border: 1px solid #b0b0b0;
+    }}
+    QTextEdit {{
+        background: {editor['background']};
+        color: {editor['foreground']};
+        selection-background-color: {editor['selection_background']};
+        selection-color: {editor['selection_foreground']};
+    }}
+    '''
+
+def get_modern_styles(theme_data):
+    palette = theme_data["palette"]
+    editor = theme_data["editor"]
+    return f'''
+    QMainWindow {{
+        background: {palette['base']};
+    }}
+    QMenuBar {{
+        background: {palette['window']};
+        color: {palette['window_text']};
+        border-bottom: 1px solid {palette['mid']};
+    }}
+    QMenuBar::item {{
+        background: transparent;
+        color: {palette['window_text']};
+        padding: 4px 12px;
+    }}
+    QMenuBar::item:selected {{
+        background: {palette['highlight']};
+        color: {palette['highlight_text']};
+    }}
+    QMenu {{
+        background: {palette['window']};
+        color: {palette['window_text']};
+        border: 1px solid {palette['mid']};
+    }}
+    QMenu::item:selected {{
+        background: {palette['highlight']};
+        color: {palette['highlight_text']};
+    }}
+    QTabBar::tab {{
+        background: {editor['background']};
+        color: {editor['foreground']};
+        border: 1px solid {palette['mid']};
+        border-bottom: none;
+        border-top-left-radius: 8px;
+        border-top-right-radius: 8px;
+        min-width: 80px;
+        padding: 6px 18px;
+    }}
+    QTabBar::tab:selected {{
+        background: {palette['highlight']};
+        color: {palette['highlight_text']};
+        border: 1.5px solid {palette['highlight']};
+    }}
+    QPushButton {{
+        background: {palette['button']};
+        color: {palette['button_text']};
+        border-radius: 8px;
+        padding: 7px 18px;
+        border: 1px solid {palette['mid']};
+    }}
+    QPushButton:hover {{
+        background: {palette['highlight']};
+        color: {palette['highlight_text']};
+    }}
+    QScrollBar:vertical, QScrollBar:horizontal {{
+        background: {palette['mid']};
+        width: 8px;
+        margin: 0px;
+        border: none;
+    }}
+    QTextEdit {{
+        background: {editor['background']};
+        color: {editor['foreground']};
+        selection-background-color: {editor['selection_background']};
+        selection-color: {editor['selection_foreground']};
+    }}
+    '''
+
+def get_user_styles():
+    # Try to load user styles from user_styles.qss in the root directory
+    user_qss_path = os.path.join(os.path.dirname(__file__), '..', 'user_styles.qss')
+    if os.path.exists(user_qss_path):
+        with open(user_qss_path, 'r', encoding='utf-8') as f:
+            return f.read()
+    # Fallback: return empty string
+    return ''
 
 class ThemeManager(QObject):
     themeChanged = pyqtSignal(dict)

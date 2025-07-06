@@ -1,0 +1,47 @@
+{
+  "asas": {
+    "name": "Dark Theme",
+    "description": "Default dark theme with blue accents",
+    "palette": {
+      "window": "#2b2b2b",
+      "window_text": "#ffffff",
+      "base": "#222226",
+      "alternate_base": "#323232",
+      "text": "#ffffff",
+      "button": "#353535",
+      "button_text": "#ffffff",
+      "bright_text": "#00b4ff",
+      "highlight": "#2a82da",
+      "highlight_text": "#ffffff",
+      "link": "#2a82da",
+      "dark": "#1e1e1e",
+      "mid": "#3c3c3c",
+      "midlight": "#494949",
+      "light": "#5c5c5c"
+    },
+    "editor": {
+      "background": "#550000",
+      "foreground": "#ffff7f",
+      "selection_background": "#264f78",
+      "selection_foreground": "#ffffff",
+      "line_number_background": "#222226",
+      "line_number_foreground": "#909090",
+      "current_line": "#2a2a2a",
+      "search_result": "#613214"
+    },
+    "syntax": {
+      "keyword": "#569cd6",
+      "operator": "#d4d4d4",
+      "brace": "#d4d4d4",
+      "defclass": "#4ec9b0",
+      "string": "#ce9178",
+      "string2": "#ce9178",
+      "comment": "#6a9955",
+      "self": "#569cd6",
+      "numbers": "#b5cea8",
+      "background": "#222226",
+      "foreground": "#d4d4d4",
+      "functioncall": "#dcdcaa"
+    }
+  }
+}

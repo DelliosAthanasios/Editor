@@ -4,6 +4,13 @@ from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QPushButton, QVBoxLayout, QWidget, QHBoxLayout, QSplitter
 )
 from PyQt5.QtCore import Qt
+
+# Add the global folder to Python path
+current_dir = os.path.dirname(os.path.abspath(__file__))
+global_dir = os.path.join(current_dir, 'global')
+if global_dir not in sys.path:
+    sys.path.append(global_dir)
+
 # Import the main window and set_dark_palette from main.py
 from main import TextEditor, set_dark_palette
 
@@ -44,7 +51,9 @@ class CanvasWindow(QMainWindow):
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)
-    set_dark_palette(app)
+    # Apply the current theme from theme manager instead of hardcoded dark palette
+    from theme_manager import theme_manager_singleton
+    theme_manager_singleton.apply_theme(app, theme_manager_singleton.current_theme_key)
     app.setStyle("Fusion")
     window = CanvasWindow()
     window.show()

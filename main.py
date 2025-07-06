@@ -1,6 +1,7 @@
 import sys
 import os
 import json
+import subprocess
 
 # Add the global folder to Python path
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -11,7 +12,7 @@ if global_dir not in sys.path:
 from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QAction, QFileDialog,
     QStyleFactory, QTabWidget, QWidget, QHBoxLayout,
-    QMessageBox, QVBoxLayout, QTreeView, QFileSystemModel, QSplitter, QDialog, QTextEdit
+    QMessageBox, QVBoxLayout, QTreeView, QFileSystemModel, QSplitter, QDialog, QTextEdit, QActionGroup
 )
 from PyQt5.QtGui import QFont, QPalette, QColor, QPainter, QFontMetrics, QTextCursor
 from PyQt5.QtCore import Qt, QTimer, QRect, QDir
@@ -22,7 +23,7 @@ import edit_actions
 from edit_actions import SearchReplaceDialog
 import keybinds
 from minimap import Minimap
-from theme_manager import theme_manager_singleton, get_editor_styles, ThemeManagerDialog
+from theme_manager import theme_manager_singleton, get_editor_styles, get_menu_bar_styles, get_separator_styles, get_tab_bar_styles, get_classic_styles, get_user_styles, ThemeManagerDialog, load_user_prefs, save_user_prefs
 from checkpoints import CheckpointManager, CheckpointDialog, CheckpointManagerDialog
 from image_viewer_widget import ImageViewerWidget
 from pdf_viewer import PDFViewer
@@ -178,6 +179,7 @@ class EditorTabWidget(QWidget):
             self.numberline.set_theme(theme_data)
         if hasattr(self, "minimap"):
             self.minimap.set_theme(theme_data)
+        # No per-widget stylesheet needed; main window applies global style
 
     def update_layout(self):
         while self.layout.count():
@@ -213,6 +215,16 @@ class MainTabWidget(QTabWidget):
         self.setTabsClosable(True)
         self.tabCloseRequested.connect(self.close_tab)
         self.file_open_callback = file_open_callback
+        
+        # Connect to theme changes
+        theme_manager_singleton.themeChanged.connect(self.set_theme)
+        # Apply initial theme
+        theme_data = theme_manager_singleton.get_theme()
+        self.set_theme(theme_data)
+    
+    def set_theme(self, theme_data):
+        # No per-widget stylesheet needed; main window applies global style
+        pass
 
     def add_editor_tab(self, title="Untitled", content="", font=None, numberline_on_left=True, file_path=None):
         lang = detect_language_by_extension(file_path) if file_path else "python"
@@ -293,9 +305,15 @@ class TextEditor(QMainWindow):
         self.checkpoint_manager = CheckpointManager()
         self.music_player = None
         self.child_windows = []  # Keep references to child windows
+        # Load visual style from prefs
+        prefs = load_user_prefs()
+        self.visual_style = prefs.get("visual_style", "classic")
         self.init_ui()
         self.apply_theme(self.theme)
+        self.apply_visual_style()
         self.setup_split_actions()
+        # Connect to theme changes
+        theme_manager_singleton.themeChanged.connect(self.on_theme_changed)
 
     def editor_factory(self):
         return MainTabWidget(file_open_callback=self.open_file_in_editor_tab)
@@ -468,6 +486,21 @@ class TextEditor(QMainWindow):
         
         view_menu.addAction("Toggle Minimap", self.toggle_minimap)
         
+        # Visual Style submenu
+        visual_style_menu = view_menu.addMenu("Visual Style")
+        classic_action = QAction("Classic", self, checkable=True)
+        user_action = QAction("User Mode", self, checkable=True)
+        visual_style_group = QActionGroup(self)
+        visual_style_group.setExclusive(True)
+        visual_style_group.addAction(classic_action)
+        visual_style_group.addAction(user_action)
+        classic_action.setChecked(self.visual_style == "classic")
+        user_action.setChecked(self.visual_style == "user")
+        classic_action.triggered.connect(lambda: self.set_visual_style("classic"))
+        user_action.triggered.connect(lambda: self.set_visual_style("user"))
+        visual_style_menu.addAction(classic_action)
+        visual_style_menu.addAction(user_action)
+        
         toggle_console_action = QAction("Toggle Console", self)
         toggle_console_action.setCheckable(True)
         toggle_console_action.setChecked(False)
@@ -546,6 +579,32 @@ class TextEditor(QMainWindow):
         for editor in self.editors:
             if hasattr(editor, "set_theme"):
                 editor.set_theme(theme_data)
+        # Update menu bar styling
+        self.update_menu_bar_theme(theme_data)
+        # Update separator styling
+        self.update_separator_theme(theme_data)
+        self.apply_visual_style()
+
+    def update_menu_bar_theme(self, theme_data):
+        """Update menu bar styling to match the current theme"""
+        menu_style = get_menu_bar_styles(theme_data)
+        self.menuBar().setStyleSheet(menu_style)
+
+    def update_separator_theme(self, theme_data):
+        """Update separator styling between minimap and numberline"""
+        separator_style = get_separator_styles(theme_data)
+        
+        # Apply to main splitter and editor splitter
+        self.main_splitter.setStyleSheet(separator_style)
+        self.editor_splitter.setStyleSheet(separator_style)
+
+    def on_theme_changed(self, theme_data):
+        """Handle theme changes from the theme manager"""
+        self.theme = theme_manager_singleton.current_theme_key
+        # Update menu bar and separators
+        self.update_menu_bar_theme(theme_data)
+        self.update_separator_theme(theme_data)
+        self.apply_visual_style()
 
     def set_dark_theme(self):
         self.apply_theme("dark")
@@ -865,6 +924,34 @@ class TextEditor(QMainWindow):
         new_window = TextEditor()
         new_window.show()
         self.child_windows.append(new_window)
+
+    def set_visual_style(self, style):
+        self.visual_style = style
+        prefs = load_user_prefs()
+        prefs["visual_style"] = style
+        save_user_prefs(prefs)
+        self.apply_visual_style()
+        if style == "user":
+            # Launch user_mode.py as a separate process
+            user_mode_path = os.path.join(os.path.dirname(__file__), 'user_mode.py')
+            try:
+                subprocess.Popen([sys.executable, user_mode_path])
+            except Exception as e:
+                QMessageBox.warning(self, "User Mode", f"Could not launch user_mode.py: {e}")
+
+    def apply_visual_style(self):
+        theme_data = theme_manager_singleton.get_theme()
+        if self.visual_style == "classic":
+            style = get_classic_styles(theme_data)
+        elif self.visual_style == "user":
+            style = get_user_styles()
+        else:
+            style = get_classic_styles(theme_data)
+        self.setStyleSheet(style)
+        # Update all editors
+        for editor in self.editors:
+            if hasattr(editor, "set_theme"):
+                editor.set_theme(theme_data)
 
 if __name__ == '__main__':
     try:

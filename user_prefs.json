@@ -1,7 +1,4 @@
 {
-<<<<<<< HEAD
-  "theme": "nord"
-=======
-  "theme": "dark"
->>>>>>> 2c27a6d2917527c400befe294442aabfc1e0121c
+  "theme": "dark",
+  "visual_style": "user"
 }
