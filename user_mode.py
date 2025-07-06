@@ -1,8 +1,12 @@
 import os
+import sys
 from PyQt5.QtWidgets import (
-    QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QListWidget, QTextEdit, QPushButton, QLabel, QFileDialog, QMessageBox, QSplitter
+    QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QListWidget, QTextEdit, QPushButton, QLabel, QFileDialog, QMessageBox, QSplitter, QComboBox
 )
 from PyQt5.QtCore import Qt
+from user_mode.config_loader import load_config
+from user_mode.api import EditorAPI
+from user_mode import plugin_loader
 
 # List of main UI elements and their QSS selectors and default QSS
 UI_ELEMENTS = [
@@ -20,6 +24,9 @@ UI_ELEMENTS = [
 
 USER_QSS_PATH = os.path.join(os.path.dirname(__file__), 'user_styles.qss')
 GLOBAL_DIR = os.path.join(os.path.dirname(__file__), 'global')
+
+PROFILE_PATH = os.path.join(os.path.dirname(__file__), "user_mode", "user_profile.json")
+DEFAULT_PROFILE_PATH = os.path.join(os.path.dirname(__file__), "user_mode", "default_profile.json")
 
 def get_global_entities():
     entities = []
@@ -165,8 +172,63 @@ class StyleChooser(QMainWindow):
         self.on_element_selected(self.list_widget.currentRow())
         QMessageBox.information(self, "Reloaded", "Styles reloaded from user_styles.qss.")
 
+class UserModeWindow(QMainWindow):
+    def __init__(self, main_window=None):
+        super().__init__()
+        self.setWindowTitle("User Mode Profile Manager")
+        self.setGeometry(300, 200, 600, 400)
+        self.main_window = main_window
+        self.api = EditorAPI(main_window)
+        self.init_ui()
+        self.load_and_apply_profile(PROFILE_PATH)
+
+    def init_ui(self):
+        central = QWidget()
+        layout = QVBoxLayout(central)
+        self.setCentralWidget(central)
+        self.profile_label = QLabel("Active Profile: user_profile.json")
+        layout.addWidget(self.profile_label)
+        self.reload_btn = QPushButton("Reload Profile")
+        self.reload_btn.clicked.connect(self.reload_profile)
+        layout.addWidget(self.reload_btn)
+        self.prompt = QTextEdit()
+        self.prompt.setPlaceholderText("Live Python prompt (coming soon)")
+        layout.addWidget(self.prompt, 1)
+        self.run_btn = QPushButton("Run Prompt")
+        self.run_btn.clicked.connect(self.run_prompt)
+        layout.addWidget(self.run_btn)
+
+    def load_and_apply_profile(self, path):
+        try:
+            config = load_config(path)
+        except Exception as e:
+            QMessageBox.critical(self, "Config Error", str(e))
+            return
+        self.api.set_theme(config["theme"])
+        self.api.set_font(**config["font"])
+        for plugin_path in config.get("plugins", []):
+            plugin_loader.load_plugin(os.path.join("user_mode", plugin_path), self.api)
+        for event, hook in config.get("hooks", {}).items():
+            if ":" in hook:
+                plugin_path, func_name = hook.split(":")
+                mod = plugin_loader.load_plugin(os.path.join("user_mode", plugin_path), self.api)
+                self.api.register_hook(event, getattr(mod, func_name))
+            else:
+                self.api.register_hook(event, eval(hook))
+        # TODO: Apply other config sections (ui, keybindings, ai_assist, integrations)
+
+    def reload_profile(self):
+        self.load_and_apply_profile(PROFILE_PATH)
+
+    def run_prompt(self):
+        code = self.prompt.toPlainText()
+        try:
+            exec(code, {"api": self.api})
+        except Exception as e:
+            QMessageBox.critical(self, "Prompt Error", str(e))
+
 if __name__ == '__main__':
-    app = QApplication([])
-    window = StyleChooser()
+    app = QApplication(sys.argv)
+    window = UserModeWindow()
     window.show()
-    app.exec_() 
+    sys.exit(app.exec_()) 

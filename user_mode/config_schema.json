@@ -1,0 +1,31 @@
+{
+  "type": "object",
+  "properties": {
+    "profile_name": {"type": "string"},
+    "theme": {"type": "string"},
+    "font": {
+      "type": "object",
+      "properties": {
+        "family": {"type": "string"},
+        "size": {"type": "integer"},
+        "antialias": {"type": "boolean"}
+      },
+      "required": ["family", "size"]
+    },
+    "ui": {
+      "type": "object",
+      "properties": {
+        "transparency": {"type": "number"},
+        "background": {"type": "string"},
+        "blur": {"type": "boolean"},
+        "layout": {"type": "object"}
+      }
+    },
+    "keybindings": {"type": "object"},
+    "hooks": {"type": "object"},
+    "plugins": {"type": "array", "items": {"type": "string"}},
+    "ai_assist": {"type": "object"},
+    "integrations": {"type": "object"}
+  },
+  "required": ["profile_name", "theme"]
+} 

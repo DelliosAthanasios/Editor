@@ -1,0 +1,20 @@
+{
+  "profile_name": "Default Profile",
+  "theme": "themes/my_theme.json",
+  "font": {"family": "Fira Code", "size": 14, "antialias": true},
+  "ui": {
+    "transparency": 0.98,
+    "background": "assets/background.jpg",
+    "blur": false,
+    "layout": {
+      "sidebars": "hidden",
+      "panels": {"minimap": "right", "console": "bottom", "file_explorer": "left"},
+      "floating_widgets": ["music_player"]
+    }
+  },
+  "keybindings": {"save": "Ctrl+S", "open": "Ctrl+O"},
+  "hooks": {"on_save": "extensions/my_plugin.py:on_save"},
+  "plugins": ["extensions/my_plugin.py"],
+  "ai_assist": {"enabled": true, "on_type": "lambda text: ai_suggest(text)"},
+  "integrations": {"file_explorer": true, "font_editor": true, "theme_manager": true}
+} 
