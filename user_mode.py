@@ -1,9 +1,9 @@
 import os
 import sys
 from PyQt5.QtWidgets import (
-    QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QListWidget, QTextEdit, QPushButton, QLabel, QFileDialog, QMessageBox, QSplitter, QComboBox
+    QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QListWidget, QTextEdit, QPushButton, QLabel, QFileDialog, QMessageBox, QSplitter, QComboBox, QFileSystemModel, QTreeView
 )
-from PyQt5.QtCore import Qt
+from PyQt5.QtCore import Qt, QDir
 from user_mode.config_loader import load_config
 from user_mode.api import EditorAPI
 from user_mode import plugin_loader
@@ -173,30 +173,91 @@ class StyleChooser(QMainWindow):
         QMessageBox.information(self, "Reloaded", "Styles reloaded from user_styles.qss.")
 
 class UserModeWindow(QMainWindow):
-    def __init__(self, main_window=None):
+    def __init__(self, main_window=None, theme_editor=None, font_editor=None):
         super().__init__()
         self.setWindowTitle("User Mode Profile Manager")
-        self.setGeometry(300, 200, 600, 400)
+        self.setGeometry(200, 100, 1200, 800)
         self.main_window = main_window
+        self.theme_editor = theme_editor
+        self.font_editor = font_editor
         self.api = EditorAPI(main_window)
         self.init_ui()
         self.load_and_apply_profile(PROFILE_PATH)
 
     def init_ui(self):
         central = QWidget()
-        layout = QVBoxLayout(central)
+        layout = QHBoxLayout(central)
         self.setCentralWidget(central)
-        self.profile_label = QLabel("Active Profile: user_profile.json")
-        layout.addWidget(self.profile_label)
-        self.reload_btn = QPushButton("Reload Profile")
-        self.reload_btn.clicked.connect(self.reload_profile)
-        layout.addWidget(self.reload_btn)
+
+        # File browser (left)
+        self.file_model = QFileSystemModel()
+        self.file_model.setRootPath(QDir.currentPath())
+        self.file_tree = QTreeView()
+        self.file_tree.setModel(self.file_model)
+        self.file_tree.setRootIndex(self.file_model.index(QDir.currentPath()))
+        self.file_tree.setColumnWidth(0, 250)
+        self.file_tree.clicked.connect(self.on_file_selected)
+        layout.addWidget(self.file_tree, 2)
+
+        # Main area (center)
+        main_splitter = QSplitter(Qt.Vertical)
+        layout.addWidget(main_splitter, 5)
+
+        # Top: code/source viewer
+        self.code_view = QTextEdit()
+        self.code_view.setReadOnly(True)
+        self.code_view.setFontFamily("Fira Mono")
+        self.code_view.setFontPointSize(11)
+        main_splitter.addWidget(self.code_view)
+
+        # Bottom: live Python prompt and output
+        prompt_layout = QVBoxLayout()
+        prompt_widget = QWidget()
+        prompt_widget.setLayout(prompt_layout)
+        main_splitter.addWidget(prompt_widget)
+
+        self.prompt_label = QLabel("<b>Live Python Prompt</b> (context: api, main_window, theme_editor, font_editor)")
+        prompt_layout.addWidget(self.prompt_label)
         self.prompt = QTextEdit()
-        self.prompt.setPlaceholderText("Live Python prompt (coming soon)")
-        layout.addWidget(self.prompt, 1)
+        self.prompt.setPlaceholderText("Type Python code here. Use api, main_window, theme_editor, font_editor.")
+        prompt_layout.addWidget(self.prompt)
         self.run_btn = QPushButton("Run Prompt")
         self.run_btn.clicked.connect(self.run_prompt)
-        layout.addWidget(self.run_btn)
+        prompt_layout.addWidget(self.run_btn)
+        self.output = QTextEdit()
+        self.output.setReadOnly(True)
+        self.output.setPlaceholderText("Prompt output and errors will appear here.")
+        prompt_layout.addWidget(self.output)
+
+        # Right: profile controls and editor launchers
+        right_panel = QVBoxLayout()
+        right_widget = QWidget()
+        right_widget.setLayout(right_panel)
+        layout.addWidget(right_widget, 2)
+        self.profile_label = QLabel("Active Profile: user_profile.json")
+        right_panel.addWidget(self.profile_label)
+        self.reload_btn = QPushButton("Reload Profile")
+        self.reload_btn.clicked.connect(self.reload_profile)
+        right_panel.addWidget(self.reload_btn)
+        self.theme_btn = QPushButton("Open Theme Editor")
+        self.theme_btn.clicked.connect(self.launch_theme_editor)
+        right_panel.addWidget(self.theme_btn)
+        self.font_btn = QPushButton("Open Font Editor")
+        self.font_btn.clicked.connect(self.launch_font_editor)
+        right_panel.addWidget(self.font_btn)
+        right_panel.addStretch(1)
+
+    def on_file_selected(self, index):
+        path = self.file_model.filePath(index)
+        if os.path.isfile(path):
+            try:
+                with open(path, 'r', encoding='utf-8') as f:
+                    code = f.read()
+                self.code_view.setPlainText(code)
+            except Exception as e:
+                self.code_view.setPlainText(f"Error reading file: {e}")
+        else:
+            self.code_view.setPlainText("")
 
     def load_and_apply_profile(self, path):
         try:
@@ -222,10 +283,39 @@ class UserModeWindow(QMainWindow):
 
     def run_prompt(self):
         code = self.prompt.toPlainText()
+        local_ctx = {
+            "api": self.api,
+            "main_window": self.main_window,
+            "theme_editor": self.theme_editor,
+            "font_editor": self.font_editor,
+            "output": self.output
+        }
         try:
-            exec(code, {"api": self.api})
+            old_stdout, old_stderr = sys.stdout, sys.stderr
+            from io import StringIO
+            sys.stdout = sys.stderr = mystream = StringIO()
+            exec(code, local_ctx)
+            sys.stdout = old_stdout
+            sys.stderr = old_stderr
+            self.output.setPlainText(mystream.getvalue())
         except Exception as e:
-            QMessageBox.critical(self, "Prompt Error", str(e))
+            sys.stdout = old_stdout
+            sys.stderr = old_stderr
+            self.output.setPlainText(str(e))
+
+    def launch_theme_editor(self):
+        if self.theme_editor:
+            self.theme_editor.show()
+            self.theme_editor.raise_()
+        else:
+            QMessageBox.information(self, "Theme Editor", "Theme editor is not available in this context.")
+
+    def launch_font_editor(self):
+        if self.font_editor:
+            self.font_editor.show()
+            self.font_editor.raise_()
+        else:
+            QMessageBox.information(self, "Font Editor", "Font editor is not available in this context.")
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)
