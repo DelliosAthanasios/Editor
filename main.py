@@ -305,12 +305,10 @@ class TextEditor(QMainWindow):
         self.checkpoint_manager = CheckpointManager()
         self.music_player = None
         self.child_windows = []  # Keep references to child windows
-        # Load visual style from prefs
-        prefs = load_user_prefs()
-        self.visual_style = prefs.get("visual_style", "classic")
         self.init_ui()
         self.apply_theme(self.theme)
-        self.apply_visual_style()
+        # Always use classic style
+        self.setStyleSheet(get_classic_styles(theme_manager_singleton.get_theme()))
         self.setup_split_actions()
         # Connect to theme changes
         theme_manager_singleton.themeChanged.connect(self.on_theme_changed)
@@ -486,21 +484,6 @@ class TextEditor(QMainWindow):
         
         view_menu.addAction("Toggle Minimap", self.toggle_minimap)
         
-        # Visual Style submenu
-        visual_style_menu = view_menu.addMenu("Visual Style")
-        classic_action = QAction("Classic", self, checkable=True)
-        user_action = QAction("User Mode", self, checkable=True)
-        visual_style_group = QActionGroup(self)
-        visual_style_group.setExclusive(True)
-        visual_style_group.addAction(classic_action)
-        visual_style_group.addAction(user_action)
-        classic_action.setChecked(self.visual_style == "classic")
-        user_action.setChecked(self.visual_style == "user")
-        classic_action.triggered.connect(lambda: self.set_visual_style("classic"))
-        user_action.triggered.connect(lambda: self.set_visual_style("user"))
-        visual_style_menu.addAction(classic_action)
-        visual_style_menu.addAction(user_action)
-        
         toggle_console_action = QAction("Toggle Console", self)
         toggle_console_action.setCheckable(True)
         toggle_console_action.setChecked(False)
@@ -583,7 +566,8 @@ class TextEditor(QMainWindow):
         self.update_menu_bar_theme(theme_data)
         # Update separator styling
         self.update_separator_theme(theme_data)
-        self.apply_visual_style()
+        # Always use classic style
+        self.setStyleSheet(get_classic_styles(theme_data))
 
     def update_menu_bar_theme(self, theme_data):
         """Update menu bar styling to match the current theme"""
@@ -604,7 +588,8 @@ class TextEditor(QMainWindow):
         # Update menu bar and separators
         self.update_menu_bar_theme(theme_data)
         self.update_separator_theme(theme_data)
-        self.apply_visual_style()
+        # Always use classic style
+        self.setStyleSheet(get_classic_styles(theme_data))
 
     def set_dark_theme(self):
         self.apply_theme("dark")
@@ -924,34 +909,6 @@ class TextEditor(QMainWindow):
         new_window = TextEditor()
         new_window.show()
         self.child_windows.append(new_window)
-
-    def set_visual_style(self, style):
-        self.visual_style = style
-        prefs = load_user_prefs()
-        prefs["visual_style"] = style
-        save_user_prefs(prefs)
-        self.apply_visual_style()
-        if style == "user":
-            # Launch user_mode.py as a separate process
-            user_mode_path = os.path.join(os.path.dirname(__file__), 'user_mode.py')
-            try:
-                subprocess.Popen([sys.executable, user_mode_path])
-            except Exception as e:
-                QMessageBox.warning(self, "User Mode", f"Could not launch user_mode.py: {e}")
-
-    def apply_visual_style(self):
-        theme_data = theme_manager_singleton.get_theme()
-        if self.visual_style == "classic":
-            style = get_classic_styles(theme_data)
-        elif self.visual_style == "user":
-            style = get_user_styles()
-        else:
-            style = get_classic_styles(theme_data)
-        self.setStyleSheet(style)
-        # Update all editors
-        for editor in self.editors:
-            if hasattr(editor, "set_theme"):
-                editor.set_theme(theme_data)
 
 if __name__ == '__main__':
     try:
