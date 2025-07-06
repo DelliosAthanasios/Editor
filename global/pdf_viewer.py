@@ -7,7 +7,7 @@ from PyQt5.QtWidgets import (
     QPushButton, QFileDialog, QHBoxLayout, QScrollArea,
     QLineEdit, QListWidget, QDockWidget, QMessageBox,
     QTabWidget, QComboBox, QGridLayout, QAction, QMenuBar, QMenu, QStyle, QShortcut, QListWidgetItem,
-    QDialog, QDialogButtonBox, QRadioButton, QButtonGroup, QSizePolicy
+    QDialog, QDialogButtonBox, QRadioButton, QButtonGroup, QSizePolicy, QStackedWidget
 )
 from PyQt5.QtGui import QPixmap, QImage, QKeySequence, QFont, QColor, QPalette
 from PyQt5.QtCore import Qt, QSize, QEvent, QStandardPaths, QTimer, pyqtSignal, QObject
@@ -284,34 +284,38 @@ class PDFTab(QWidget):
         # Compact navigation bar
         self.prev_button = QPushButton("◀")
         self.prev_button.setFont(font_button)
-        self.prev_button.setFixedSize(36, 28)
+        self.prev_button.setFixedSize(32, 24)
         self.next_button = QPushButton("▶")
         self.next_button.setFont(font_button)
-        self.next_button.setFixedSize(36, 28)
+        self.next_button.setFixedSize(32, 24)
         self.zoom_out_btn = QPushButton("−")
         self.zoom_out_btn.setFont(font_button)
-        self.zoom_out_btn.setFixedSize(32, 28)
+        self.zoom_out_btn.setFixedSize(28, 24)
         self.zoom_in_btn = QPushButton("+")
         self.zoom_in_btn.setFont(font_button)
-        self.zoom_in_btn.setFixedSize(32, 28)
+        self.zoom_in_btn.setFixedSize(28, 24)
         self.pages_combo = QComboBox()
         self.pages_combo.setFont(font_button)
         self.pages_combo.addItems(["1 page", "2 pages"])
-        self.pages_combo.setFixedSize(80, 28)
+        self.pages_combo.setFixedSize(70, 24)
         self.page_input = QLineEdit()
-        self.page_input.setPlaceholderText("Go to page")
-        self.page_input.setFixedSize(70, 28)
+        self.page_input.setPlaceholderText("Go to")
+        self.page_input.setFixedSize(80, 24)
         self.page_input.setFont(font_input)
         self.search_input = QLineEdit()
         self.search_input.setPlaceholderText("Search text")
-        self.search_input.setFixedSize(90, 28)
+        self.search_input.setFixedSize(100, 24)
         self.search_input.setFont(font_input)
         self.bookmark_button = QPushButton("Bookmark")
         self.bookmark_button.setFont(font_button)
-        self.bookmark_button.setFixedSize(90, 28)
+        self.bookmark_button.setFixedSize(85, 24)
+        self.tabs_button = QPushButton("Tabs")
+        self.tabs_button.setFont(font_button)
+        self.tabs_button.setFixedSize(32, 24)
+        self.tabs_button.setToolTip("Toggle Tabs")
         self.overview_button = QPushButton("Overview")
         self.overview_button.setFont(font_button)
-        self.overview_button.setFixedSize(90, 28)
+        self.overview_button.setFixedSize(85, 24)
 
         self.pages_combo.currentIndexChanged.connect(self.change_page_count)
         self.prev_button.clicked.connect(self.prev_page)
@@ -321,11 +325,12 @@ class PDFTab(QWidget):
         self.page_input.returnPressed.connect(self.goto_page)
         self.search_input.returnPressed.connect(self.search_with_menu)
         self.bookmark_button.clicked.connect(self.add_bookmark)
+        self.tabs_button.clicked.connect(self.toggle_tabs)
         self.overview_button.clicked.connect(self.toggle_overview)
 
         nav_layout = QHBoxLayout()
-        nav_layout.setSpacing(6)
-        nav_layout.setContentsMargins(4, 2, 4, 2)
+        nav_layout.setSpacing(4)
+        nav_layout.setContentsMargins(3, 1, 3, 1)
         nav_layout.addWidget(self.prev_button)
         nav_layout.addWidget(self.next_button)
         nav_layout.addWidget(self.page_label)
@@ -335,6 +340,7 @@ class PDFTab(QWidget):
         nav_layout.addWidget(self.page_input)
         nav_layout.addWidget(self.search_input)
         nav_layout.addWidget(self.bookmark_button)
+        nav_layout.addWidget(self.tabs_button)
         nav_layout.addWidget(self.overview_button)
         nav_layout.addStretch(1)
 
@@ -577,6 +583,10 @@ class PDFTab(QWidget):
         if self.parent_viewer:
             self.parent_viewer.toggle_overview(tab=self)
 
+    def toggle_tabs(self):
+        if self.parent_viewer:
+            self.parent_viewer.toggle_vertical_tabs()
+
     def get_page_preview(self, page_num, size=QSize(100, 140)):
         key = (page_num, size.width(), size.height(), round(self.zoom, 2))
         if key in self._preview_cache:
@@ -632,10 +642,48 @@ class PDFViewer(QMainWindow):
         theme_manager_singleton.themeChanged.connect(self.set_theme)
         self.settings = load_settings()
         self.signal_proxy = SignalProxy()
-        self.tab_widget = QTabWidget()
-        self.tab_widget.setTabsClosable(True)
-        self.tab_widget.tabCloseRequested.connect(self.close_tab)
-        self.setCentralWidget(self.tab_widget)
+        
+        # Create main layout with vertical tabs
+        self.central_widget = QWidget()
+        self.main_layout = QHBoxLayout(self.central_widget)
+        self.main_layout.setContentsMargins(0, 0, 0, 0)
+        self.main_layout.setSpacing(0)
+        
+        # Vertical tab list
+        self.tab_list = QListWidget()
+        self.tab_list.setMaximumWidth(200)
+        self.tab_list.setMinimumWidth(150)
+        self.tab_list.itemClicked.connect(self.tab_list_item_clicked)
+        self.tab_list.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.tab_list.customContextMenuRequested.connect(self.show_tab_context_menu)
+        self.tab_list.setStyleSheet("""
+            QListWidget {
+                background-color: #2d2d30;
+                border: none;
+                outline: none;
+            }
+            QListWidget::item {
+                padding: 8px;
+                border-bottom: 1px solid #3e3e42;
+                color: #cccccc;
+            }
+            QListWidget::item:selected {
+                background-color: #007acc;
+                color: white;
+            }
+            QListWidget::item:hover {
+                background-color: #3e3e42;
+            }
+        """)
+        
+        # Stacked widget to hold PDF tabs
+        self.stacked_widget = QStackedWidget()
+        
+        # Add widgets to main layout
+        self.main_layout.addWidget(self.tab_list)
+        self.main_layout.addWidget(self.stacked_widget)
+        
+        self.setCentralWidget(self.central_widget)
         self.create_menus()
         self.create_toolbar()
         self.bookmark_dock = QDockWidget("Bookmarks", self)
@@ -687,10 +735,11 @@ class PDFViewer(QMainWindow):
             QListWidget {{ background-color: {palette['base']}; border: none; color: {palette['text']}; }}
             QListWidget::item {{ padding: 5px; border-bottom: 1px solid {palette['mid']}; }}
             QListWidget::item:hover {{ background-color: {palette['highlight']}; color: {palette['highlight_text']}; }}
-            QTabWidget::pane {{ border: none; }}
-            QTabBar::tab {{ background: {palette['base']}; color: {palette['text']}; padding: 8px; border: none; border-top-left-radius: 8px; border-top-right-radius: 8px; font-weight: bold; font-size: 11pt; }}
-            QTabBar::tab:selected {{ background: {palette['highlight']}; color: {palette['highlight_text']}; }}
-            QTabBar::tab:hover {{ background: {palette['mid']}; }}
+            QStackedWidget {{ background: {palette['base']}; border: none; }}
+            QListWidget {{ background-color: {palette['base']}; border: none; color: {palette['text']}; }}
+            QListWidget::item {{ padding: 8px; border-bottom: 1px solid {palette['mid']}; color: {palette['text']}; }}
+            QListWidget::item:selected {{ background-color: {palette['highlight']}; color: {palette['highlight_text']}; }}
+            QListWidget::item:hover {{ background-color: {palette['mid']}; }}
             QScrollArea {{ background: {palette['base']}; }}
         """)
 
@@ -727,18 +776,48 @@ class PDFViewer(QMainWindow):
         toolbar = self.addToolBar("Toolbar")
         toolbar.setMovable(False)
         toolbar.setFloatable(False)
-        self.open_button = QPushButton("Open PDF")
-        self.open_button.setFont(QFont("Segoe UI", 11, QFont.Bold))
-        self.open_button.setFixedSize(120, 36)
-        self.open_button.setStyleSheet("QPushButton {background: #3a6df0; border-radius: 8px; color: #fff; font-weight: bold; border: none;} QPushButton:pressed {background: #3457b1;}")
-        self.open_button.clicked.connect(self.open_pdf)
-        toolbar.addWidget(self.open_button)
-        self.fullscreen_button = QPushButton("Full Screen")
-        self.fullscreen_button.setFont(QFont("Segoe UI", 11, QFont.Bold))
-        self.fullscreen_button.setFixedSize(120, 36)
-        self.fullscreen_button.setStyleSheet("QPushButton {background: #444a58; border-radius: 8px; color: #fff; font-weight: bold; border: none;} QPushButton:pressed {background: #2d3340;}")
-        self.fullscreen_button.clicked.connect(self.toggle_fullscreen)
-        toolbar.addWidget(self.fullscreen_button)
+
+    def toggle_vertical_tabs(self):
+        if self.tab_list.isVisible():
+            self.tab_list.hide()
+        else:
+            self.tab_list.show()
+        
+        # Update button text in current tab
+        current_tab = self.get_current_tab()
+        if current_tab and hasattr(current_tab, 'tabs_button'):
+            if self.tab_list.isVisible():
+                current_tab.tabs_button.setText("📋")
+                current_tab.tabs_button.setToolTip("Hide Tabs")
+            else:
+                current_tab.tabs_button.setText("📋")
+                current_tab.tabs_button.setToolTip("Show Tabs")
+
+    def tab_list_item_clicked(self, item):
+        index = self.tab_list.row(item)
+        if 0 <= index < self.stacked_widget.count():
+            self.stacked_widget.setCurrentIndex(index)
+            self.update_current_tab()
+
+    def update_current_tab(self):
+        current_index = self.stacked_widget.currentIndex()
+        if current_index >= 0:
+            # Update tab list selection
+            self.tab_list.setCurrentRow(current_index)
+            # Update overview and bookmarks
+            current_tab = self.stacked_widget.widget(current_index)
+            if current_tab:
+                self.set_overview_tab(current_tab)
+                self.refresh_bookmark_preview()
+
+    def show_tab_context_menu(self, position):
+        item = self.tab_list.itemAt(position)
+        if item:
+            menu = QMenu(self)
+            close_action = QAction("Close Tab", self)
+            close_action.triggered.connect(lambda: self.close_tab(self.tab_list.row(item)))
+            menu.addAction(close_action)
+            menu.exec_(self.tab_list.mapToGlobal(position))
 
     def open_pdf(self):
         file_names, _ = QFileDialog.getOpenFileNames(self, "Open PDF", "", "PDF Files (*.pdf)")
@@ -748,28 +827,46 @@ class PDFViewer(QMainWindow):
         self.update_recent_files_menu()
 
     def add_pdf_tab(self, file_name):
-        for i in range(self.tab_widget.count()):
-            tab = self.tab_widget.widget(i)
+        for i in range(self.stacked_widget.count()):
+            tab = self.stacked_widget.widget(i)
             if hasattr(tab, "file_path") and tab.file_path == file_name:
-                self.tab_widget.setCurrentWidget(tab)
+                self.stacked_widget.setCurrentWidget(tab)
+                self.update_current_tab()
                 return
         tab = PDFTab(self, file_path=file_name, settings=self.settings, signal_proxy=self.signal_proxy)
         if tab.open_pdf(file_name):
-            self.tab_widget.addTab(tab, os.path.basename(file_name))
-            self.tab_widget.setCurrentWidget(tab)
-            self.set_overview_tab(tab)
-            self.refresh_bookmark_preview()
+            # Add to stacked widget
+            self.stacked_widget.addWidget(tab)
+            # Add to tab list
+            item = QListWidgetItem(os.path.basename(file_name))
+            item.setToolTip(file_name)
+            self.tab_list.addItem(item)
+            # Set as current
+            self.stacked_widget.setCurrentWidget(tab)
+            self.update_current_tab()
 
     def close_tab(self, index):
-        self.tab_widget.removeTab(index)
-        if self.tab_widget.count() == 0:
-            self.bookmark_list.clear()
-            self.overview_widget.set_tab(None)
-            self.overview_widget.refresh()
-            self.bookmark_preview.setText("No bookmarks")
+        if 0 <= index < self.stacked_widget.count():
+            # Remove from stacked widget
+            widget = self.stacked_widget.widget(index)
+            self.stacked_widget.removeWidget(widget)
+            widget.deleteLater()
+            # Remove from tab list
+            self.tab_list.takeItem(index)
+            
+            if self.stacked_widget.count() == 0:
+                self.bookmark_list.clear()
+                self.overview_widget.set_tab(None)
+                self.overview_widget.refresh()
+                self.bookmark_preview.setText("No bookmarks")
+            else:
+                # Set current to the next available tab
+                new_index = min(index, self.stacked_widget.count() - 1)
+                self.stacked_widget.setCurrentIndex(new_index)
+                self.update_current_tab()
 
     def get_current_tab(self):
-        return self.tab_widget.currentWidget()
+        return self.stacked_widget.currentWidget()
 
     def bookmark_navigate(self, item):
         tab = self.get_current_tab()
@@ -832,11 +929,9 @@ class PDFViewer(QMainWindow):
         if not self.fullscreen:
             self.showFullScreen()
             self.fullscreen = True
-            self.fullscreen_button.setText("Exit Full Screen")
         else:
             self.showNormal()
             self.fullscreen = False
-            self.fullscreen_button.setText("Full Screen")
 
     def setup_shortcuts(self):
         self.shortcuts = {}
@@ -895,21 +990,23 @@ class PDFViewer(QMainWindow):
             tab.zoom_out()
 
     def close_current_tab(self):
-        i = self.tab_widget.currentIndex()
+        i = self.stacked_widget.currentIndex()
         if i >= 0:
             self.close_tab(i)
 
     def next_tab(self):
-        idx = self.tab_widget.currentIndex()
-        count = self.tab_widget.count()
+        idx = self.stacked_widget.currentIndex()
+        count = self.stacked_widget.count()
         if count > 1:
-            self.tab_widget.setCurrentIndex((idx + 1) % count)
+            self.stacked_widget.setCurrentIndex((idx + 1) % count)
+            self.update_current_tab()
 
     def prev_tab(self):
-        idx = self.tab_widget.currentIndex()
-        count = self.tab_widget.count()
+        idx = self.stacked_widget.currentIndex()
+        count = self.stacked_widget.count()
         if count > 1:
-            self.tab_widget.setCurrentIndex((idx - 1 + count) % count)
+            self.stacked_widget.setCurrentIndex((idx - 1 + count) % count)
+            self.update_current_tab()
 
     def scroll_up(self):
         tab = self.get_current_tab()
