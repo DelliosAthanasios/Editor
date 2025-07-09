@@ -29,13 +29,13 @@ class AssemblyEmulatorTab(QWidget):
         top_bar.addWidget(arch_label)
         top_bar.addWidget(self.arch_combo)
 
-        # Show/Hide Output button (small, next to arch chooser)
+        # Show/Hide Output button (clearer, with text and icon)
         self.toggle_output_btn = QPushButton()
         self.toggle_output_btn.setCheckable(True)
         self.toggle_output_btn.setChecked(True)
-        self.toggle_output_btn.setFixedSize(28, 28)
+        self.toggle_output_btn.setFixedSize(100, 28)
         self.toggle_output_btn.setToolTip("Show/Hide Output")
-        self.toggle_output_btn.setText("≡")
+        self.toggle_output_btn.setText("Hide Output")
         self.toggle_output_btn.clicked.connect(self.toggle_output)
         top_bar.addWidget(self.toggle_output_btn)
 
@@ -92,10 +92,10 @@ class AssemblyEmulatorTab(QWidget):
 
     def toggle_output(self):
         if self.toggle_output_btn.isChecked():
-            self.toggle_output_btn.setText("≡")
+            self.toggle_output_btn.setText("Hide Output")
             self.splitter.widget(1).show()
         else:
-            self.toggle_output_btn.setText("≡")
+            self.toggle_output_btn.setText("Show Output")
             self.splitter.widget(1).hide()
 
     def run_assembly(self):
