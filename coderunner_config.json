@@ -1,0 +1,6 @@
+{
+    ".py": "python",
+    ".js": "node",
+    ".cpp": "g++",
+    ".java": "java"
+}
