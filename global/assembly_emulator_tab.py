@@ -1,9 +1,9 @@
 import os
 from PyQt5.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QTextEdit, QComboBox, QMessageBox, QSizePolicy, QFileDialog, QSplitter
+    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QTextEdit, QComboBox, QMessageBox, QSizePolicy, QFileDialog, QSplitter, QSpacerItem
 )
 from PyQt5.QtCore import Qt
-from PyQt5.QtGui import QFont
+from PyQt5.QtGui import QFont, QIcon
 
 import sys
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'future'))
@@ -19,29 +19,43 @@ class AssemblyEmulatorTab(QWidget):
     def init_ui(self):
         layout = QVBoxLayout(self)
 
-        # Architecture selection
-        arch_layout = QHBoxLayout()
+        # Top bar: Architecture chooser, Show/Hide Output, Run button
+        top_bar = QHBoxLayout()
         arch_label = QLabel("Architecture:")
         self.arch_combo = QComboBox()
         self.arch_combo.addItems(self.simulator.list_architectures())
         self.arch_combo.setFont(QFont("Fira Mono", 14, QFont.Bold))
         self.arch_combo.setMinimumHeight(36)
-        arch_layout.addWidget(arch_label)
-        arch_layout.addWidget(self.arch_combo)
-        arch_layout.addStretch()
-        layout.addLayout(arch_layout)
+        top_bar.addWidget(arch_label)
+        top_bar.addWidget(self.arch_combo)
+
+        # Show/Hide Output button (small, next to arch chooser)
+        self.toggle_output_btn = QPushButton()
+        self.toggle_output_btn.setCheckable(True)
+        self.toggle_output_btn.setChecked(True)
+        self.toggle_output_btn.setFixedSize(28, 28)
+        self.toggle_output_btn.setToolTip("Show/Hide Output")
+        self.toggle_output_btn.setText("≡")
+        self.toggle_output_btn.clicked.connect(self.toggle_output)
+        top_bar.addWidget(self.toggle_output_btn)
+
+        top_bar.addItem(QSpacerItem(20, 20, QSizePolicy.Expanding, QSizePolicy.Minimum))
+
+        # Run button (small, green, play symbol, top right)
+        self.run_btn = QPushButton()
+        self.run_btn.setFixedSize(36, 36)
+        self.run_btn.setStyleSheet("QPushButton { background-color: #27ae60; color: white; border-radius: 18px; font-size: 18px; } QPushButton:hover { background-color: #219150; }")
+        self.run_btn.setToolTip("Run (Ctrl+Enter)")
+        self.run_btn.setText("▶")
+        self.run_btn.clicked.connect(self.run_assembly)
+        top_bar.addWidget(self.run_btn)
+
+        layout.addLayout(top_bar)
 
         # File name label
         self.file_label = QLabel("[Untitled]")
         self.file_label.setStyleSheet("font-weight: bold; color: #4a90e2; font-size: 13pt;")
         layout.addWidget(self.file_label)
-
-        # Show/Hide Output button
-        self.toggle_output_btn = QPushButton("Hide Output")
-        self.toggle_output_btn.setCheckable(True)
-        self.toggle_output_btn.setChecked(True)
-        self.toggle_output_btn.clicked.connect(self.toggle_output)
-        layout.addWidget(self.toggle_output_btn)
 
         # Splitter for code and output
         self.splitter = QSplitter(Qt.Vertical)
@@ -76,17 +90,12 @@ class AssemblyEmulatorTab(QWidget):
         self.splitter.setStretchFactor(1, 2)
         layout.addWidget(self.splitter)
 
-        # Run button
-        run_btn = QPushButton("Run")
-        run_btn.clicked.connect(self.run_assembly)
-        layout.addWidget(run_btn)
-
     def toggle_output(self):
         if self.toggle_output_btn.isChecked():
-            self.toggle_output_btn.setText("Hide Output")
+            self.toggle_output_btn.setText("≡")
             self.splitter.widget(1).show()
         else:
-            self.toggle_output_btn.setText("Show Output")
+            self.toggle_output_btn.setText("≡")
             self.splitter.widget(1).hide()
 
     def run_assembly(self):
