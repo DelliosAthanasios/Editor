@@ -527,6 +527,8 @@ class TextEditor(QMainWindow):
         languages_menu = menu_bar.addMenu("Languages")
         languages_menu.addAction("Syntax Options")
         languages_menu.addAction("Compilers")
+        languages_menu.addAction("CPU Emulators", self.open_assembly_emulator_tab)
+        # (keep existing compilers if any)
         env_menu = menu_bar.addMenu("Environments")
         env_menu.addAction("Create Environment")
         env_menu.addAction("Configure Environment")
@@ -909,6 +911,13 @@ class TextEditor(QMainWindow):
         new_window = TextEditor()
         new_window.show()
         self.child_windows.append(new_window)
+
+    def open_assembly_emulator_tab(self):
+        from assembly_emulator_tab import AssemblyEmulatorTab
+        tab_widget = self.get_active_tabwidget()
+        emulator_tab = AssemblyEmulatorTab(self)
+        tab_widget.addTab(emulator_tab, "CPU Emulator")
+        tab_widget.setCurrentWidget(emulator_tab)
 
 if __name__ == '__main__':
     try:
