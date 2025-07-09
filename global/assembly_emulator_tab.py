@@ -1,6 +1,6 @@
 import os
 from PyQt5.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QTextEdit, QComboBox, QMessageBox, QSizePolicy
+    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QTextEdit, QComboBox, QMessageBox, QSizePolicy, QFileDialog, QSplitter
 )
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QFont
@@ -36,27 +36,58 @@ class AssemblyEmulatorTab(QWidget):
         self.file_label.setStyleSheet("font-weight: bold; color: #4a90e2; font-size: 13pt;")
         layout.addWidget(self.file_label)
 
+        # Show/Hide Output button
+        self.toggle_output_btn = QPushButton("Hide Output")
+        self.toggle_output_btn.setCheckable(True)
+        self.toggle_output_btn.setChecked(True)
+        self.toggle_output_btn.clicked.connect(self.toggle_output)
+        layout.addWidget(self.toggle_output_btn)
+
+        # Splitter for code and output
+        self.splitter = QSplitter(Qt.Vertical)
+        self.splitter.setChildrenCollapsible(False)
+
         # Assembly code input
+        code_widget = QWidget()
+        code_layout = QVBoxLayout(code_widget)
+        code_layout.setContentsMargins(0, 0, 0, 0)
         code_label = QLabel("Assembly Code:")
         self.code_edit = QTextEdit()
         self.code_edit.setPlaceholderText("Type your assembly code here...")
         self.code_edit.setFont(QFont("Fira Mono", 12))
-        layout.addWidget(code_label)
-        layout.addWidget(self.code_edit)
+        code_layout.addWidget(code_label)
+        code_layout.addWidget(self.code_edit)
+        self.splitter.addWidget(code_widget)
+
+        # Results area
+        result_widget = QWidget()
+        result_layout = QVBoxLayout(result_widget)
+        result_layout.setContentsMargins(0, 0, 0, 0)
+        result_label = QLabel("Results:")
+        self.result_edit = QTextEdit()
+        self.result_edit.setReadOnly(True)
+        self.result_edit.setFont(QFont("Fira Mono", 11))
+        self.result_edit.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        result_layout.addWidget(result_label)
+        result_layout.addWidget(self.result_edit)
+        self.splitter.addWidget(result_widget)
+
+        self.splitter.setStretchFactor(0, 3)
+        self.splitter.setStretchFactor(1, 2)
+        layout.addWidget(self.splitter)
 
         # Run button
         run_btn = QPushButton("Run")
         run_btn.clicked.connect(self.run_assembly)
         layout.addWidget(run_btn)
 
-        # Results area
-        result_label = QLabel("Results:")
-        self.result_edit = QTextEdit()
-        self.result_edit.setReadOnly(True)
-        self.result_edit.setFont(QFont("Fira Mono", 11))
-        self.result_edit.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-        layout.addWidget(result_label)
-        layout.addWidget(self.result_edit)
+    def toggle_output(self):
+        if self.toggle_output_btn.isChecked():
+            self.toggle_output_btn.setText("Hide Output")
+            self.splitter.widget(1).show()
+        else:
+            self.toggle_output_btn.setText("Show Output")
+            self.splitter.widget(1).hide()
 
     def run_assembly(self):
         arch = self.arch_combo.currentText()
@@ -107,7 +138,6 @@ class AssemblyEmulatorTab(QWidget):
         self.file_label.setText("[Untitled]")
 
     def open_file(self, file_path=None):
-        from PyQt5.QtWidgets import QFileDialog
         if not file_path:
             file_path, _ = QFileDialog.getOpenFileName(self, "Open Assembly File", "", "Assembly Files (*.s *.asm);;All Files (*)")
         if file_path:
@@ -121,7 +151,6 @@ class AssemblyEmulatorTab(QWidget):
                 QMessageBox.critical(self, "Error", f"Failed to open file: {str(e)}")
 
     def save_file(self, file_path=None):
-        from PyQt5.QtWidgets import QFileDialog
         if not file_path:
             if self._file_path:
                 file_path = self._file_path
