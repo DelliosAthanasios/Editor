@@ -670,6 +670,13 @@ class TextEditor(QMainWindow):
 
     def new_file(self):
         try:
+            # Assembly Emulator integration
+            from assembly_emulator_tab import AssemblyEmulatorTab
+            current_widget = self.get_active_tabwidget().currentWidget()
+            if isinstance(current_widget, AssemblyEmulatorTab):
+                current_widget.new_file()
+                self.get_active_tabwidget().setTabText(self.get_active_tabwidget().currentIndex(), "CPU Emulator")
+                return
             file_path, _ = QFileDialog.getSaveFileName(
                 self, "Create New File", "",
                 "All Files (*);;Text Files (*.txt);;Python Files (*.py)"
@@ -684,11 +691,25 @@ class TextEditor(QMainWindow):
     def open_file(self):
         file_name, _ = QFileDialog.getOpenFileName(self, "Open File")
         if file_name:
+            # Assembly Emulator integration
+            from assembly_emulator_tab import AssemblyEmulatorTab
+            current_widget = self.get_active_tabwidget().currentWidget()
+            if isinstance(current_widget, AssemblyEmulatorTab):
+                current_widget.open_file(file_name)
+                self.get_active_tabwidget().setTabText(self.get_active_tabwidget().currentIndex(), os.path.basename(file_name))
+                return
             self.open_file_in_editor_tab(file_name)
 
     def save_file(self):
         current_widget = self.get_active_tabwidget().currentWidget()
         if not current_widget:
+            return
+        # Assembly Emulator integration
+        from assembly_emulator_tab import AssemblyEmulatorTab
+        if isinstance(current_widget, AssemblyEmulatorTab):
+            current_widget.save_file()
+            if current_widget._file_path:
+                self.get_active_tabwidget().setTabText(self.get_active_tabwidget().currentIndex(), os.path.basename(current_widget._file_path))
             return
         if hasattr(current_widget, 'editor'):
             editor = current_widget.editor

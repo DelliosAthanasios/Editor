@@ -13,6 +13,7 @@ class AssemblyEmulatorTab(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.simulator = EnhancedAssemblySimulator()
+        self._file_path = None
         self.init_ui()
 
     def init_ui(self):
@@ -23,10 +24,17 @@ class AssemblyEmulatorTab(QWidget):
         arch_label = QLabel("Architecture:")
         self.arch_combo = QComboBox()
         self.arch_combo.addItems(self.simulator.list_architectures())
+        self.arch_combo.setFont(QFont("Fira Mono", 14, QFont.Bold))
+        self.arch_combo.setMinimumHeight(36)
         arch_layout.addWidget(arch_label)
         arch_layout.addWidget(self.arch_combo)
         arch_layout.addStretch()
         layout.addLayout(arch_layout)
+
+        # File name label
+        self.file_label = QLabel("[Untitled]")
+        self.file_label.setStyleSheet("font-weight: bold; color: #4a90e2; font-size: 13pt;")
+        layout.addWidget(self.file_label)
 
         # Assembly code input
         code_label = QLabel("Assembly Code:")
@@ -91,4 +99,39 @@ class AssemblyEmulatorTab(QWidget):
             lines.extend(changes)
         else:
             lines.append("\nNo register changes.")
-        self.result_edit.setPlainText("\n".join(lines)) 
+        self.result_edit.setPlainText("\n".join(lines))
+
+    def new_file(self):
+        self._file_path = None
+        self.code_edit.clear()
+        self.file_label.setText("[Untitled]")
+
+    def open_file(self, file_path=None):
+        from PyQt5.QtWidgets import QFileDialog
+        if not file_path:
+            file_path, _ = QFileDialog.getOpenFileName(self, "Open Assembly File", "", "Assembly Files (*.s *.asm);;All Files (*)")
+        if file_path:
+            try:
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    code = f.read()
+                self.code_edit.setPlainText(code)
+                self._file_path = file_path
+                self.file_label.setText(os.path.basename(file_path))
+            except Exception as e:
+                QMessageBox.critical(self, "Error", f"Failed to open file: {str(e)}")
+
+    def save_file(self, file_path=None):
+        from PyQt5.QtWidgets import QFileDialog
+        if not file_path:
+            if self._file_path:
+                file_path = self._file_path
+            else:
+                file_path, _ = QFileDialog.getSaveFileName(self, "Save Assembly File", "", "Assembly Files (*.s *.asm);;All Files (*)")
+        if file_path:
+            try:
+                with open(file_path, 'w', encoding='utf-8') as f:
+                    f.write(self.code_edit.toPlainText())
+                self._file_path = file_path
+                self.file_label.setText(os.path.basename(file_path))
+            except Exception as e:
+                QMessageBox.critical(self, "Error", f"Save failed: {str(e)}") 
