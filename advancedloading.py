@@ -267,29 +267,30 @@ class AdvancedLoadingDialog(QDialog):
         
         layout.addWidget(progress_group)
         
-        # Preview area with better styling
+        # Preview area with minimalistic style
         if self.preview_checkbox.isChecked():
-            preview_group = QGroupBox("👀 Live Preview")
-            preview_group.setStyleSheet("QGroupBox { font-weight: bold; margin-top: 10px; }")
-            preview_layout = QVBoxLayout(preview_group)
-            preview_layout.setSpacing(8)
-            
+            preview_widget = QWidget()
+            preview_layout = QVBoxLayout(preview_widget)
+            preview_layout.setContentsMargins(0, 0, 0, 0)
+            preview_layout.setSpacing(0)
+
             self.preview_text = QTextEdit()
             ui_settings = CONFIG.get("ui_settings", {})
             self.preview_text.setMaximumHeight(ui_settings.get("preview_height", 150))
             self.preview_text.setReadOnly(True)
             self.preview_text.setStyleSheet("""
                 QTextEdit {
-                    border: 1px solid #ccc;
-                    border-radius: 3px;
-                    background-color: #f9f9f9;
+                    background: #fff;
+                    color: #222;
+                    border: none;
                     font-family: 'Consolas', 'Monaco', monospace;
-                    font-size: 11px;
+                    font-size: 12px;
+                    padding: 8px;
                 }
             """)
             preview_layout.addWidget(self.preview_text)
-            
-            layout.addWidget(preview_group)
+
+            layout.addWidget(preview_widget)
         
         # Buttons with better styling and spacing
         button_layout = QHBoxLayout()
@@ -422,8 +423,7 @@ class AdvancedLoadingDialog(QDialog):
         event.accept()
 
 class AdvancedFileEditor(QWidget):
-    """Specialized editor widget for large files with virtual scrolling"""
-    
+    """Minimalistic chunked editor for large files"""
     def __init__(self, file_path: str, parent=None):
         super().__init__(parent)
         self.file_path = file_path
@@ -433,129 +433,74 @@ class AdvancedFileEditor(QWidget):
         self.total_lines = 0
         self.init_ui()
         self.load_file()
-    
+
     def init_ui(self):
         layout = QVBoxLayout(self)
-        layout.setSpacing(8)
-        layout.setContentsMargins(10, 10, 10, 10)
-        
-        # Header with file info
-        header_layout = QHBoxLayout()
-        
-        file_info_label = QLabel(f"📁 {os.path.basename(self.file_path)}")
-        file_info_label.setStyleSheet("font-weight: bold; font-size: 14px; color: #333;")
-        header_layout.addWidget(file_info_label)
-        
-        header_layout.addStretch()
-        
-        # Status label
-        self.status_label = QLabel("Loading...")
-        self.status_label.setStyleSheet("color: #666; font-style: italic;")
-        header_layout.addWidget(self.status_label)
-        
-        layout.addLayout(header_layout)
-        
-        # Navigation controls with better styling
-        nav_group = QGroupBox("📖 Navigation")
-        nav_group.setStyleSheet("QGroupBox { font-weight: bold; margin-top: 8px; }")
-        nav_layout = QVBoxLayout(nav_group)
-        
-        # Top navigation row
-        top_nav = QHBoxLayout()
-        
-        self.prev_chunk_btn = QPushButton("⬅️ Previous Chunk")
-        self.prev_chunk_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #2196F3;
-                color: white;
-                border: none;
-                padding: 6px 12px;
-                border-radius: 3px;
-                font-weight: bold;
-            }
-            QPushButton:hover {
-                background-color: #1976D2;
-            }
-            QPushButton:disabled {
-                background-color: #cccccc;
-            }
-        """)
+        layout.setSpacing(0)
+        layout.setContentsMargins(0, 0, 0, 0)
+
+        # Minimal top bar for navigation
+        nav_bar = QWidget()
+        nav_layout = QHBoxLayout(nav_bar)
+        nav_layout.setContentsMargins(8, 8, 8, 8)
+        nav_layout.setSpacing(8)
+
+        self.prev_chunk_btn = QPushButton("Previous")
+        self.prev_chunk_btn.setFixedHeight(24)
+        self.prev_chunk_btn.setFixedWidth(80)
+        self.prev_chunk_btn.setFlat(True)
         self.prev_chunk_btn.clicked.connect(self.prev_chunk)
-        
-        self.chunk_info_label = QLabel("Chunk 0/0")
-        self.chunk_info_label.setStyleSheet("font-weight: bold; color: #333; padding: 0 10px;")
-        
-        self.next_chunk_btn = QPushButton("Next Chunk ➡️")
-        self.next_chunk_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #2196F3;
-                color: white;
-                border: none;
-                padding: 6px 12px;
-                border-radius: 3px;
-                font-weight: bold;
-            }
-            QPushButton:hover {
-                background-color: #1976D2;
-            }
-            QPushButton:disabled {
-                background-color: #cccccc;
-            }
-        """)
+        nav_layout.addWidget(self.prev_chunk_btn)
+
+        self.chunk_info_label = QLabel("")
+        self.chunk_info_label.setStyleSheet("color: #666; font-size: 12px;")
+        nav_layout.addWidget(self.chunk_info_label)
+
+        self.next_chunk_btn = QPushButton("Next")
+        self.next_chunk_btn.setFixedHeight(24)
+        self.next_chunk_btn.setFixedWidth(80)
+        self.next_chunk_btn.setFlat(True)
         self.next_chunk_btn.clicked.connect(self.next_chunk)
-        
-        top_nav.addWidget(self.prev_chunk_btn)
-        top_nav.addWidget(self.chunk_info_label)
-        top_nav.addWidget(self.next_chunk_btn)
-        top_nav.addStretch()
-        
-        # Bottom navigation row with line info
-        bottom_nav = QHBoxLayout()
-        
-        self.line_info_label = QLabel("Lines: 0-0 of 0")
-        self.line_info_label.setStyleSheet("color: #666; font-size: 11px;")
-        bottom_nav.addWidget(self.line_info_label)
-        
-        bottom_nav.addStretch()
-        
-        # Jump to chunk input
-        bottom_nav.addWidget(QLabel("Jump to chunk:"))
+        nav_layout.addWidget(self.next_chunk_btn)
+
+        nav_layout.addStretch()
+        nav_layout.addWidget(QLabel("Jump:"))
         self.jump_spinbox = QSpinBox()
         self.jump_spinbox.setMinimum(1)
         self.jump_spinbox.setMaximum(1)
-        self.jump_spinbox.setMinimumWidth(80)
+        self.jump_spinbox.setFixedWidth(60)
         self.jump_spinbox.valueChanged.connect(self.jump_to_chunk)
-        bottom_nav.addWidget(self.jump_spinbox)
-        
-        nav_layout.addLayout(top_nav)
-        nav_layout.addLayout(bottom_nav)
-        layout.addWidget(nav_group)
-        
-        # Text editor with better styling
+        nav_layout.addWidget(self.jump_spinbox)
+
+        layout.addWidget(nav_bar)
+
+        # High-contrast, distraction-free text area
         self.text_edit = QTextEdit()
         self.text_edit.setReadOnly(True)
         self.text_edit.setStyleSheet("""
             QTextEdit {
-                border: 1px solid #ccc;
-                border-radius: 3px;
-                background-color: #fafafa;
+                background: #fff;
+                color: #222;
+                border: none;
                 font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
-                font-size: 12px;
-                line-height: 1.4;
+                font-size: 13px;
+                line-height: 1.5;
+                padding: 12px;
             }
         """)
         layout.addWidget(self.text_edit)
-    
+
+        # Subtle status bar at the bottom
+        self.status_bar = QLabel("")
+        self.status_bar.setStyleSheet("color: #888; font-size: 11px; padding: 4px 8px;")
+        layout.addWidget(self.status_bar)
+
     def load_file(self):
-        """Load the file in chunks"""
         try:
-            self.status_label.setText("Loading file in chunks...")
-            
-            # First, count total lines
+            # Count total lines
             with open(self.file_path, 'r', encoding='utf-8') as f:
                 self.total_lines = sum(1 for _ in f)
-            
-            # Then load in chunks
+            # Load in chunks
             with open(self.file_path, 'r', encoding='utf-8') as f:
                 chunk = []
                 for line in f:
@@ -563,62 +508,48 @@ class AdvancedFileEditor(QWidget):
                     if len(chunk) >= self.chunk_size:
                         self.chunks.append(chunk)
                         chunk = []
-                
-                if chunk:  # Add remaining lines
+                if chunk:
                     self.chunks.append(chunk)
-            
-            # Update UI elements
             self.jump_spinbox.setMaximum(len(self.chunks))
-            self.status_label.setText(f"Loaded {len(self.chunks)} chunks ({self.total_lines:,} total lines)")
             self.update_display()
-            
         except Exception as e:
-            self.status_label.setText("Error loading file")
-            QMessageBox.critical(self, "Error", f"Failed to load file: {str(e)}")
-    
+            self.text_edit.setPlainText(f"Error loading file: {e}")
+
     def update_display(self):
-        """Update the display with current chunk"""
         if not self.chunks:
+            self.text_edit.setPlainText("")
+            self.chunk_info_label.setText("")
+            self.status_bar.setText("")
             return
-        
         chunk = self.chunks[self.current_chunk_index]
         self.text_edit.setPlainText('\n'.join(chunk))
-        
-        # Calculate line range for current chunk
         start_line = self.current_chunk_index * self.chunk_size + 1
         end_line = min(start_line + len(chunk) - 1, self.total_lines)
-        
-        # Update navigation
-        self.chunk_info_label.setText(f"Chunk {self.current_chunk_index + 1}/{len(self.chunks)}")
-        self.line_info_label.setText(f"Lines: {start_line:,}-{end_line:,} of {self.total_lines:,}")
-        
-        # Update jump spinbox without triggering valueChanged
+        self.chunk_info_label.setText(f"Chunk {self.current_chunk_index + 1}/{len(self.chunks)}  |  Lines {start_line}-{end_line}")
         self.jump_spinbox.blockSignals(True)
         self.jump_spinbox.setValue(self.current_chunk_index + 1)
         self.jump_spinbox.blockSignals(False)
-        
-        # Update button states
         self.prev_chunk_btn.setEnabled(self.current_chunk_index > 0)
         self.next_chunk_btn.setEnabled(self.current_chunk_index < len(self.chunks) - 1)
-    
+        # Minimal status bar info
+        self.status_bar.setText(f"{os.path.basename(self.file_path)}  •  {self.total_lines:,} lines  •  {len(self.chunks)} chunks  •  Chunk size: {self.chunk_size}")
+
     def jump_to_chunk(self, chunk_number):
-        """Jump to a specific chunk"""
         if 1 <= chunk_number <= len(self.chunks):
             self.current_chunk_index = chunk_number - 1
             self.update_display()
-    
+
     def prev_chunk(self):
         if self.current_chunk_index > 0:
             self.current_chunk_index -= 1
             self.update_display()
-    
+
     def next_chunk(self):
         if self.current_chunk_index < len(self.chunks) - 1:
             self.current_chunk_index += 1
             self.update_display()
-    
+
     def get_full_content(self) -> str:
-        """Get the full file content (use with caution for very large files)"""
         return '\n'.join(['\n'.join(chunk) for chunk in self.chunks])
 
 def should_use_advanced_loading(file_path: str, threshold: int = DEFAULT_LINE_THRESHOLD) -> tuple[bool, Dict[str, Any]]:
