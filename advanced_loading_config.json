@@ -1,0 +1,30 @@
+{
+    "line_threshold": 1000,
+    "chunk_size": 1000,
+    "memory_limit_mb": 50,
+    "preview_lines": 50,
+    "supported_encodings": [
+        "utf-8",
+        "latin-1",
+        "cp1252",
+        "iso-8859-1"
+    ],
+    "file_extensions": {
+        "text_files": [".txt", ".md", ".log", ".ini", ".cfg", ".conf"],
+        "code_files": [".py", ".js", ".java", ".cpp", ".c", ".h", ".hpp", ".cs", ".php", ".rb", ".go", ".rs", ".swift", ".kt"],
+        "data_files": [".json", ".csv", ".xml", ".yaml", ".yml", ".toml", ".sql"],
+        "documentation": [".rst", ".tex", ".adoc", ".wiki"]
+    },
+    "ui_settings": {
+        "dialog_width": 500,
+        "dialog_height": 400,
+        "preview_height": 150,
+        "progress_update_interval": 100
+    },
+    "performance": {
+        "max_preview_lines": 100,
+        "chunk_size_min": 100,
+        "chunk_size_max": 10000,
+        "memory_warning_threshold_mb": 100
+    }
+} 

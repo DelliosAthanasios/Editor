@@ -286,6 +286,23 @@ class MainTabWidget(QTabWidget):
         index = self.addTab(widget, "Diagramm Sketch")
         self.setCurrentIndex(index)
 
+    def add_advanced_editor_tab(self, file_path):
+        """Add an advanced editor tab for large files"""
+        try:
+            from advancedloading import create_advanced_editor_tab
+            advanced_widget = create_advanced_editor_tab(file_path, self)
+            if advanced_widget:
+                title = f"Large File: {os.path.basename(file_path)}"
+                index = self.addTab(advanced_widget, title)
+                self.setCurrentIndex(index)
+                advanced_widget._file_path = file_path
+                return True
+        except ImportError:
+            QMessageBox.warning(self, "Warning", "Advanced loading module not available")
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to create advanced editor: {str(e)}")
+        return False
+
     def close_tab(self, index):
         self.removeTab(index)
 
@@ -410,12 +427,50 @@ class TextEditor(QMainWindow):
         if ext in image_extensions:
             tab_widget.add_image_tab(file_path)
             return
+        
+        # Check if file needs advanced loading
         try:
-            with open(file_path, "r", encoding="utf-8") as f:
-                content = f.read()
-            title = os.path.basename(file_path)
-            tab_widget.add_editor_tab(title=title, content=content, font=self.current_font,
-                                      numberline_on_left=self.numberline_on_left, file_path=file_path)
+            from advancedloading import should_use_advanced_loading, load_large_file, create_advanced_editor_tab
+            
+            should_use, file_info = should_use_advanced_loading(file_path)
+            
+            if should_use:
+                # Use advanced loading for large files
+                result = load_large_file(file_path, self)
+                if result is not None:
+                    content, use_advanced_editor = result
+                    title = os.path.basename(file_path)
+                    
+                    if use_advanced_editor:
+                        # Use advanced editor for large files
+                        if tab_widget.add_advanced_editor_tab(file_path):
+                            return
+                        else:
+                            # Fallback to normal loading if advanced editor fails
+                            pass
+                    else:
+                        # Use normal editor with loaded content
+                        tab_widget.add_editor_tab(title=title, content=content, font=self.current_font,
+                                                  numberline_on_left=self.numberline_on_left, file_path=file_path)
+                        return
+            else:
+                # Use normal loading for small files
+                with open(file_path, "r", encoding=file_info.get('encoding', 'utf-8')) as f:
+                    content = f.read()
+                title = os.path.basename(file_path)
+                tab_widget.add_editor_tab(title=title, content=content, font=self.current_font,
+                                          numberline_on_left=self.numberline_on_left, file_path=file_path)
+                return
+        except ImportError:
+            # Fallback to original method if advancedloading module is not available
+            try:
+                with open(file_path, "r", encoding="utf-8") as f:
+                    content = f.read()
+                title = os.path.basename(file_path)
+                tab_widget.add_editor_tab(title=title, content=content, font=self.current_font,
+                                          numberline_on_left=self.numberline_on_left, file_path=file_path)
+            except Exception as e:
+                QMessageBox.critical(self, "Error", f"Failed to open file: {str(e)}")
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Failed to open file: {str(e)}")
 
@@ -551,6 +606,11 @@ class TextEditor(QMainWindow):
         music_player_action = QAction("Music Player", self)
         music_player_action.triggered.connect(self.open_music_player)
         tools_menu.addAction(music_player_action)
+        
+        # Advanced loading option
+        advanced_loading_action = QAction("Open Large File (Advanced Loading)", self)
+        advanced_loading_action.triggered.connect(self.open_large_file_advanced)
+        tools_menu.addAction(advanced_loading_action)
 
     def open_syntax_highlighting_dialog(self):
         dlg = SyntaxHighlightingDialog(self)
@@ -939,6 +999,35 @@ class TextEditor(QMainWindow):
         emulator_tab = AssemblyEmulatorTab(self)
         tab_widget.addTab(emulator_tab, "CPU Emulator")
         tab_widget.setCurrentWidget(emulator_tab)
+
+    def open_large_file_advanced(self):
+        """Open a file using advanced loading regardless of size"""
+        file_name, _ = QFileDialog.getOpenFileName(self, "Open Large File (Advanced Loading)")
+        if file_name:
+            try:
+                from advancedloading import load_large_file
+                result = load_large_file(file_name, self)
+                if result is not None:
+                    content, use_advanced_editor = result
+                    title = os.path.basename(file_name)
+                    
+                    if use_advanced_editor:
+                        # Use advanced editor for large files
+                        if not self.get_active_tabwidget().add_advanced_editor_tab(file_name):
+                            QMessageBox.warning(self, "Warning", "Failed to create advanced editor")
+                    else:
+                        # Use normal editor with loaded content
+                        self.get_active_tabwidget().add_editor_tab(
+                            title=title, 
+                            content=content, 
+                            font=self.current_font,
+                            numberline_on_left=self.numberline_on_left, 
+                            file_path=file_name
+                        )
+            except ImportError:
+                QMessageBox.warning(self, "Warning", "Advanced loading module not available")
+            except Exception as e:
+                QMessageBox.critical(self, "Error", f"Failed to open file: {str(e)}")
 
 if __name__ == '__main__':
     try:
