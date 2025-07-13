@@ -140,10 +140,82 @@ class LatexEditorTab(QWidget):
         from Latex_edit.latex_env import LatexEditorEnv
         layout = QHBoxLayout(self)
         self.latex_env = LatexEditorEnv(self)
-        # Add minimap, numberline, etc. here if needed
+        
+        # Connect LaTeX editor signals to main editor functionality
+        self.latex_env.file_saved.connect(self.on_file_saved)
+        self.latex_env.file_opened.connect(self.on_file_opened)
+        self.latex_env.content_changed.connect(self.on_content_changed)
+        
         layout.addWidget(self.latex_env)
         self.setLayout(layout)
-        # TODO: Integrate dynamic saving, search, etc.
+        
+        # Expose editor for main editor integration
+        self.editor = self.latex_env.get_editor()
+        self._file_path = self.latex_env.get_file_path()
+        
+        # Connect to theme changes
+        theme_manager_singleton.themeChanged.connect(self.latex_env.apply_theme)
+
+    def on_file_saved(self, file_path):
+        self._file_path = file_path
+        # Update tab title
+        if hasattr(self.parent(), 'setTabText'):
+            index = self.parent().indexOf(self)
+            if index >= 0:
+                self.parent().setTabText(index, os.path.basename(file_path))
+
+    def on_file_opened(self, file_path):
+        self._file_path = file_path
+        # Update tab title
+        if hasattr(self.parent(), 'setTabText'):
+            index = self.parent().indexOf(self)
+            if index >= 0:
+                self.parent().setTabText(index, os.path.basename(file_path))
+
+    def on_content_changed(self):
+        # Mark tab as modified
+        if hasattr(self.parent(), 'setTabText'):
+            index = self.parent().indexOf(self)
+            if index >= 0:
+                current_text = self.parent().tabText(index)
+                if not current_text.endswith('*'):
+                    self.parent().setTabText(index, current_text + '*')
+
+    # Integration methods for main editor
+    def get_editor(self):
+        return self.latex_env.get_editor()
+    
+    def get_file_path(self):
+        return self.latex_env.get_file_path()
+    
+    def set_file_path(self, path):
+        self.latex_env.set_file_path(path)
+        self._file_path = path
+    
+    def get_content(self):
+        return self.latex_env.get_content()
+    
+    def set_content(self, content):
+        self.latex_env.set_content(content)
+    
+    # Expose LaTeX-specific methods
+    def run_latex(self):
+        self.latex_env.run_latex()
+    
+    def stop_latex(self):
+        self.latex_env.stop_latex()
+    
+    def toggle_numberline(self):
+        self.latex_env.toggle_numberline()
+    
+    def toggle_minimap(self):
+        self.latex_env.toggle_minimap()
+    
+    def toggle_output(self):
+        self.latex_env.toggle_output()
+    
+    def change_layout(self, mode):
+        self.latex_env.change_layout(mode)
 
 class MainTabWidget(QTabWidget):
     def __init__(self, file_open_callback, parent=None):
