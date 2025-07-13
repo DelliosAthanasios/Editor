@@ -5,9 +5,9 @@ from PyQt5.QtWidgets import (
 )
 from PyQt5.QtCore import Qt
 
-# Add the global folder to Python path
+# Add the global_ folder to Python path
 current_dir = os.path.dirname(os.path.abspath(__file__))
-global_dir = os.path.join(current_dir, 'global')
+global_dir = os.path.join(current_dir, 'global_')
 if global_dir not in sys.path:
     sys.path.append(global_dir)
 

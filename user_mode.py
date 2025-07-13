@@ -30,7 +30,7 @@ UI_ELEMENTS = [
 ]
 
 USER_QSS_PATH = os.path.join(os.path.dirname(__file__), 'user_styles.qss')
-GLOBAL_DIR = os.path.join(os.path.dirname(__file__), 'global')
+GLOBAL_DIR = os.path.join(os.path.dirname(__file__), 'global_')
 
 PROFILE_PATH = os.path.join(os.path.dirname(__file__), "user_mode", "user_profile.json")
 DEFAULT_PROFILE_PATH = os.path.join(os.path.dirname(__file__), "user_mode", "default_profile.json")
