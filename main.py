@@ -29,6 +29,8 @@ from global_.syntax_highlighting_dialog import SyntaxHighlightingDialog
 from global_.language_detection import detect_language_by_extension
 from global_.diagramm_sketch import DiagrammSketchWidget
 from global_.dynamic_saving import enable_dynamic_saving_for_qt
+from Latex_edit.latex_env import LatexEditorEnv
+from global_.numberline import NumberLine
 
 FONT_CONFIG_PATH = "font_config.json"
 
@@ -63,76 +65,6 @@ def set_dark_palette(app):
     palette.setColor(QPalette.HighlightedText, Qt.black)
     app.setPalette(palette)
 
-
-class NumberLine(QWidget):
-    def __init__(self, editor: QTextEdit, theme_data=None):
-        super().__init__(editor)
-        self.editor = editor
-        self.font = editor.font()
-        self.setFont(self.font)
-        self.setMinimumWidth(self.calculate_width())
-        self.editor.textChanged.connect(self.updateWidth)
-        self.editor.verticalScrollBar().valueChanged.connect(self.update)
-        self.editor.cursorPositionChanged.connect(self.update)
-        self.theme_data = theme_data or {}
-        self.set_theme(self.theme_data)
-        theme_manager_singleton.themeChanged.connect(self.set_theme)
-        self.show()
-
-    def set_theme(self, theme_data):
-        self.theme_data = theme_data
-        editor_colors = theme_data.get("editor", {})
-        self.bg_color = QColor(editor_colors.get("line_number_background", "#222226"))
-        self.text_color = QColor(editor_colors.get("line_number_foreground", "#909090"))
-        self.update()
-
-    def setFont(self, font):
-        self.font = font
-        super().setFont(font)
-        self.setMinimumWidth(self.calculate_width())
-        self.update()
-
-    def calculate_width(self):
-        fm = QFontMetrics(self.font)
-        digits = max(2, len(str(max(1, self.editor.document().blockCount()))))
-        return 10 + fm.width("9" * digits)
-
-    def updateWidth(self):
-        self.setMinimumWidth(self.calculate_width())
-        self.update()
-
-    def paintEvent(self, event):
-        try:
-            painter = QPainter(self)
-            painter.fillRect(event.rect(), self.bg_color)
-            painter.setFont(self.font)
-            fm = QFontMetrics(self.font)
-            doc = self.editor.document()
-            scroll_bar = self.editor.verticalScrollBar()
-            scroll_value = scroll_bar.value()
-            line_height = fm.lineSpacing()
-            viewport_height = self.editor.viewport().height()
-            y_offset = -scroll_value
-            block = doc.firstBlock()
-            block_number = 1
-            layout = self.editor.document().documentLayout()
-            while block.isValid():
-                rect = layout.blockBoundingRect(block)
-                block_top = rect.translated(0, y_offset).top()
-                block_bottom = rect.translated(0, y_offset).bottom()
-                if block_bottom < 0:
-                    block = block.next()
-                    block_number += 1
-                    continue
-                if block_top > viewport_height:
-                    break
-                painter.setPen(self.text_color)
-                rect_to_draw = QRect(0, int(block_top), self.width(), line_height)
-                painter.drawText(rect_to_draw, Qt.AlignRight | Qt.AlignVCenter, str(block_number))
-                block = block.next()
-                block_number += 1
-        except Exception as e:
-            print("Error in NumberLine paintEvent:", e)
 
 class EditorTabWidget(QWidget):
     def __init__(self, parent=None, font=None, numberline_on_left=True, language="python", file_path=None):
@@ -201,6 +133,17 @@ class EditorTabWidget(QWidget):
     def set_highlighting_language(self, language):
         self.highlighter = GenericHighlighter(self.editor.document(), language=language)
         self.current_language = language
+
+class LatexEditorTab(QWidget):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        from Latex_edit.latex_env import LatexEditorEnv
+        layout = QHBoxLayout(self)
+        self.latex_env = LatexEditorEnv(self)
+        # Add minimap, numberline, etc. here if needed
+        layout.addWidget(self.latex_env)
+        self.setLayout(layout)
+        # TODO: Integrate dynamic saving, search, etc.
 
 class MainTabWidget(QTabWidget):
     def __init__(self, file_open_callback, parent=None):
@@ -295,6 +238,12 @@ class MainTabWidget(QTabWidget):
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Failed to create advanced editor: {str(e)}")
         return False
+
+    def add_latex_tab(self, title="LaTeX", file_path=None):
+        latex_tab = LatexEditorTab()
+        index = self.addTab(latex_tab, title)
+        self.setCurrentIndex(index)
+        latex_tab._file_path = file_path
 
     def close_tab(self, index):
         self.removeTab(index)
@@ -602,6 +551,10 @@ class TextEditor(QMainWindow):
         music_player_action = QAction("Music Player", self)
         music_player_action.triggered.connect(self.open_music_player)
         tools_menu.addAction(music_player_action)
+        # Add Edit LaTeX button
+        edit_latex_action = QAction("Edit LaTeX", self)
+        edit_latex_action.triggered.connect(self.open_latex_editor)
+        tools_menu.addAction(edit_latex_action)
         
         # Advanced loading option
         advanced_loading_action = QAction("Open Large File (Advanced Loading)", self)
@@ -1036,6 +989,11 @@ class TextEditor(QMainWindow):
                 QMessageBox.warning(self, "Warning", "Advanced loading module not available")
             except Exception as e:
                 QMessageBox.critical(self, "Error", f"Failed to open file: {str(e)}")
+
+    def open_latex_editor(self):
+        tab_widget = self.get_active_tabwidget()
+        if hasattr(tab_widget, 'add_latex_tab'):
+            tab_widget.add_latex_tab()
 
     def get_tabs(self):
         # For dynamic saving compatibility
