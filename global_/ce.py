@@ -8,8 +8,8 @@ from PyQt5.QtWidgets import (
 from PyQt5.QtCore import QFileSystemWatcher, Qt, QPoint
 from PyQt5.QtGui import QFont, QColor, QIcon
 
-from parsing import CodeStructureParser  # Import moved logic here
-from theme_manager import theme_manager_singleton, get_editor_styles
+from .parsing import CodeStructureParser  # Import moved logic here
+from .theme_manager import theme_manager_singleton, get_editor_styles
 
 class CodeExplorerWidget(QWidget):
     """

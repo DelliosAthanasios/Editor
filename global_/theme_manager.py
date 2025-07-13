@@ -8,9 +8,9 @@ from PyQt5.QtWidgets import (
 )
 from PyQt5.QtCore import Qt, pyqtSignal, QObject
 
-from default_themes import DEFAULT_THEMES
+from .default_themes import DEFAULT_THEMES
 
-from theme_editor import ThemeEditorDialog, load_custom_themes, save_custom_themes
+from .theme_editor import ThemeEditorDialog, load_custom_themes, save_custom_themes
 
 THEME_CONFIG_PATH = "theme_config.json"
 USER_PREFS_PATH = "user_prefs.json"

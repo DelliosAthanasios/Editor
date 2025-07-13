@@ -4,6 +4,11 @@ import os
 import sys
 import importlib.util
 
+# Import MainTabWidget at runtime to avoid circular imports
+def get_main_tab_widget():
+    from main import MainTabWidget
+    return MainTabWidget
+
 class SplitContainer(QWidget):
     """
     Recursively manages splits and editors, always splitting the *actual* existing editor instance.
@@ -86,7 +91,7 @@ class SplitContainer(QWidget):
         cloned_instance = self.create_cloned_instance()
         if cloned_instance:
             # Create a new MainTabWidget without any initial tabs
-            from main import MainTabWidget
+            MainTabWidget = get_main_tab_widget()
             new_tab = MainTabWidget(file_open_callback=old_widget.file_open_callback)
             # Add the cloned instance as the only tab
             new_tab.addTab(cloned_instance, "Cloned Editor")

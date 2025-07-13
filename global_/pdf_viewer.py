@@ -11,7 +11,8 @@ from PyQt5.QtWidgets import (
 )
 from PyQt5.QtGui import QPixmap, QImage, QKeySequence, QFont, QColor, QPalette
 from PyQt5.QtCore import Qt, QSize, QEvent, QStandardPaths, QTimer, pyqtSignal, QObject
-from theme_manager import theme_manager_singleton, get_editor_styles
+from .theme_manager import theme_manager_singleton, get_editor_styles
+from .theme_manager import apply_theme_palette
 
 SETTINGS_FILE = os.path.join(QStandardPaths.writableLocation(QStandardPaths.AppDataLocation), "pdf_viewer_settings.json")
 
@@ -720,7 +721,6 @@ class PDFViewer(QMainWindow):
         palette = theme_data["palette"]
         editor = theme_data["editor"]
         app = QApplication.instance()
-        from theme_manager import apply_theme_palette
         apply_theme_palette(app, theme_data)
         self.setStyleSheet(f"""
             QMainWindow {{ background: {palette['window']}; color: {palette['window_text']}; }}

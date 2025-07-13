@@ -6,7 +6,7 @@ from PyQt5.QtWidgets import (
 )
 from PyQt5.QtCore import Qt, QDir, QModelIndex, pyqtSignal
 from PyQt5.QtGui import QIcon
-from theme_manager import theme_manager_singleton, get_editor_styles
+from .theme_manager import theme_manager_singleton, get_editor_styles
 
 class FileTreeWidget(QWidget):
     # Signal to notify when a file should be opened

@@ -20,7 +20,8 @@ from PyQt5.QtWidgets import (
 )
 from PyQt5.QtCore import QDir, Qt, QSettings, QSortFilterProxyModel, QFileSystemWatcher, QModelIndex, pyqtSignal, QTimer
 from PyQt5.QtGui import QFont, QIcon, QKeySequence, QColor, QPalette, QPixmap
-from theme_manager import theme_manager_singleton, get_editor_styles
+from .theme_manager import theme_manager_singleton, get_editor_styles
+from .theme_manager import apply_theme_palette
 
 # -------- Helper Models --------
 
@@ -1470,7 +1471,6 @@ class FileExplorer(QMainWindow):
         editor = theme_data["editor"]
         # Set palette for the app
         app = QApplication.instance()
-        from theme_manager import apply_theme_palette
         apply_theme_palette(app, theme_data)
         # Set styles for widgets
         self.setStyleSheet(f"""

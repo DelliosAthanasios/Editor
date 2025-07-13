@@ -3,12 +3,6 @@ import os
 import json
 import subprocess
 
-# Add the global_ folder to Python path
-current_dir = os.path.dirname(os.path.abspath(__file__))
-global_dir = os.path.join(current_dir, 'global_')
-if global_dir not in sys.path:
-    sys.path.append(global_dir)
-
 from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QAction, QFileDialog,
     QStyleFactory, QTabWidget, QWidget, QHBoxLayout,
@@ -17,25 +11,23 @@ from PyQt5.QtWidgets import (
 from PyQt5.QtGui import QFont, QPalette, QColor, QPainter, QFontMetrics, QTextCursor
 from PyQt5.QtCore import Qt, QTimer, QRect, QDir
 
-from file_explorer import FileExplorer
-from file_tree import FileTreeWidget
-import edit_actions
-from edit_actions import SearchReplaceDialog
-import keybinds
-from minimap import Minimap
-from theme_manager import theme_manager_singleton, get_editor_styles, get_menu_bar_styles, get_separator_styles, get_tab_bar_styles, get_classic_styles, get_user_styles, ThemeManagerDialog, load_user_prefs, save_user_prefs
-from checkpoints import CheckpointManager, CheckpointDialog, CheckpointManagerDialog
-from image_viewer_widget import ImageViewerWidget
-from pdf_viewer import PDFViewer
-from ce import CodeExplorerWidget
-from console import ConsolePanel
-
-from split import SplitContainer, add_splitting_actions, split_current, unsplit_current
-
-from syntax_highlighter import GenericHighlighter
-from syntax_highlighting_dialog import SyntaxHighlightingDialog
-from language_detection import detect_language_by_extension
-from diagramm_sketch import DiagrammSketchWidget
+from global_.file_explorer import FileExplorer
+from global_.file_tree import FileTreeWidget
+import global_.edit_actions as edit_actions
+from global_.edit_actions import SearchReplaceDialog
+import global_.keybinds as keybinds
+from global_.minimap import Minimap
+from global_.theme_manager import theme_manager_singleton, get_editor_styles, get_menu_bar_styles, get_separator_styles, get_tab_bar_styles, get_classic_styles, get_user_styles, ThemeManagerDialog, load_user_prefs, save_user_prefs
+from global_.checkpoints import CheckpointManager, CheckpointDialog, CheckpointManagerDialog
+from global_.image_viewer_widget import ImageViewerWidget
+from global_.pdf_viewer import PDFViewer
+from global_.ce import CodeExplorerWidget
+from global_.console import ConsolePanel
+from global_.split import SplitContainer, add_splitting_actions, split_current, unsplit_current
+from global_.syntax_highlighter import GenericHighlighter
+from global_.syntax_highlighting_dialog import SyntaxHighlightingDialog
+from global_.language_detection import detect_language_by_extension
+from global_.diagramm_sketch import DiagrammSketchWidget
 
 FONT_CONFIG_PATH = "font_config.json"
 
@@ -667,7 +659,7 @@ class TextEditor(QMainWindow):
                 self.apply_theme(selected_theme)
 
     def font_editor(self):
-        from font_editor import FontEditor
+        from global_.font_editor import FontEditor
         self.font_editor_window = FontEditor()
         self.font_editor_window.settings_applied.connect(self.apply_font_from_editor)
         self.font_editor_window.show()
@@ -731,7 +723,7 @@ class TextEditor(QMainWindow):
     def new_file(self):
         try:
             # Assembly Emulator integration
-            from assembly_emulator_tab import AssemblyEmulatorTab
+            from global_.assembly_emulator_tab import AssemblyEmulatorTab
             current_widget = self.get_active_tabwidget().currentWidget()
             if isinstance(current_widget, AssemblyEmulatorTab):
                 current_widget.new_file()
@@ -752,7 +744,7 @@ class TextEditor(QMainWindow):
         file_name, _ = QFileDialog.getOpenFileName(self, "Open File")
         if file_name:
             # Assembly Emulator integration
-            from assembly_emulator_tab import AssemblyEmulatorTab
+            from global_.assembly_emulator_tab import AssemblyEmulatorTab
             current_widget = self.get_active_tabwidget().currentWidget()
             if isinstance(current_widget, AssemblyEmulatorTab):
                 current_widget.open_file(file_name)
@@ -765,7 +757,7 @@ class TextEditor(QMainWindow):
         if not current_widget:
             return
         # Assembly Emulator integration
-        from assembly_emulator_tab import AssemblyEmulatorTab
+        from global_.assembly_emulator_tab import AssemblyEmulatorTab
         if isinstance(current_widget, AssemblyEmulatorTab):
             current_widget.save_file()
             if current_widget._file_path:
@@ -821,7 +813,7 @@ class TextEditor(QMainWindow):
 
     def open_music_player(self):
         try:
-            from music_player import MusicPlayerWidget
+            from global_.music_player import MusicPlayerWidget
             if not self.music_player:
                 self.music_player = QWidget()
                 self.music_player.setWindowTitle("Music Player")
@@ -979,7 +971,7 @@ class TextEditor(QMainWindow):
             QMessageBox.warning(self, "Warning", "No editor tab active.")
             return
             
-        from edit_actions import open_search_replace_dialog
+        from global_.edit_actions import open_search_replace_dialog
         open_search_replace_dialog(self, current_widget.editor, mode)
 
     def handle_split_action(self):
@@ -994,7 +986,7 @@ class TextEditor(QMainWindow):
         self.child_windows.append(new_window)
 
     def open_assembly_emulator_tab(self):
-        from assembly_emulator_tab import AssemblyEmulatorTab
+        from global_.assembly_emulator_tab import AssemblyEmulatorTab
         tab_widget = self.get_active_tabwidget()
         emulator_tab = AssemblyEmulatorTab(self)
         tab_widget.addTab(emulator_tab, "CPU Emulator")

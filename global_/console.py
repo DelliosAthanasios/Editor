@@ -8,7 +8,7 @@ import sys
 import json
 import tempfile
 import re
-from theme_manager import theme_manager_singleton, get_editor_styles
+from .theme_manager import theme_manager_singleton, get_editor_styles
 
 # Modern Visual Styles
 CONSOLE_FONT = QFont("Consolas", 11)

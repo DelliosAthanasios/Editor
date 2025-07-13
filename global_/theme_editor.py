@@ -9,7 +9,7 @@ from PyQt5.QtWidgets import (
 from PyQt5.QtGui import QColor
 from PyQt5.QtCore import Qt
 
-from default_themes import DEFAULT_THEMES
+from .default_themes import DEFAULT_THEMES
 
 USER_CUSTOM_THEMES_PATH = "user_custom_themes.json"
 
