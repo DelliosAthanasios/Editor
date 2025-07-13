@@ -18,6 +18,14 @@ from global_.theme_manager import theme_manager_singleton
 from global_.dynamic_saving import enable_dynamic_saving_for_qt
 from global_.syntax_highlighter import GenericHighlighter
 from global_.numberline import NumberLine
+import sys
+try:
+    from PyQt5.QtPdf import QPdfDocument  # type: ignore
+    from PyQt5.QtPdfWidgets import QPdfView  # type: ignore
+    PDF_VIEW_AVAILABLE = True
+except ImportError:
+    PDF_VIEW_AVAILABLE = False
+import subprocess
 
 class LatexEditorEnv(QWidget):
     # Signals for integration with main editor
@@ -61,51 +69,77 @@ class LatexEditorEnv(QWidget):
 
     def init_ui(self):
         main_layout = QVBoxLayout(self)
-        main_layout.setContentsMargins(5, 5, 5, 5)
-        main_layout.setSpacing(5)
-        
-        # Create editor area first (before menu bar)
+        main_layout.setContentsMargins(0, 0, 0, 0)
+        main_layout.setSpacing(0)
+
+        # Ensure editor and output are created first
         self.create_editor_area()
-        
-        # Create output area before toolbar (which references it)
         self.create_output_area()
-        
-        # Menu Bar
+
+        # Toolbar (top, like main editor)
         self.create_menu_bar()
         main_layout.addWidget(self.menu_bar)
-        
-        # Toolbar
         self.create_toolbar()
         main_layout.addWidget(self.toolbar)
-        
-        # Control Panel
+
+        # Compiler bar (like main editor's options bar)
         self.create_control_panel()
         main_layout.addWidget(self.control_panel)
-        
-        # Main Splitter
-        self.main_splitter = QSplitter(Qt.Vertical)
-        self.main_splitter.setChildrenCollapsible(False)
-        
-        # Add editor container to splitter
-        self.main_splitter.addWidget(self.editor_container)
-        
-        # Add output container to splitter
-        self.main_splitter.addWidget(self.output_container)
-        
-        # Set initial splitter sizes
-        self.main_splitter.setSizes([600, 200])
-        main_layout.addWidget(self.main_splitter)
-        
-        # Search Panel
+
+        # Search bar above editor
         self.create_search_panel()
         main_layout.addWidget(self.search_panel)
-        
-        # Status Bar
+
+        # Main horizontal splitter: editor | output | pdf preview
+        self.main_splitter = QSplitter(Qt.Horizontal)
+        self.main_splitter.setChildrenCollapsible(False)
+
+        # Editor and output in a vertical splitter (left side)
+        self.editor_output_splitter = QSplitter(Qt.Vertical)
+        self.editor_output_splitter.addWidget(self.editor_container)
+        self.editor_output_splitter.addWidget(self.output_container)
+        self.editor_output_splitter.setSizes([600, 200])
+        self.main_splitter.addWidget(self.editor_output_splitter)
+
+        # PDF Preview Panel (right, toggleable)
+        self.pdf_preview_container = QFrame()
+        self.pdf_preview_container.setFrameStyle(QFrame.StyledPanel)
+        pdf_layout = QVBoxLayout(self.pdf_preview_container)
+        pdf_layout.setContentsMargins(5, 5, 5, 5)
+        pdf_layout.setSpacing(0)
+        self.pdf_label = QLabel("PDF Preview:")
+        pdf_layout.addWidget(self.pdf_label)
+        if PDF_VIEW_AVAILABLE:
+            self.pdf_doc = QPdfDocument(self)
+            self.pdf_view = QPdfView(self.pdf_preview_container)
+            self.pdf_view.setDocument(self.pdf_doc)
+            pdf_layout.addWidget(self.pdf_view)
+        else:
+            self.pdf_view = None
+            self.open_pdf_btn = QPushButton("Open PDF in System Viewer")
+            self.open_pdf_btn.clicked.connect(self.open_pdf_external)
+            pdf_layout.addWidget(self.open_pdf_btn)
+        self.pdf_preview_container.setVisible(False)
+        self.main_splitter.addWidget(self.pdf_preview_container)
+        self.main_splitter.setSizes([900, 400])
+        main_layout.addWidget(self.main_splitter)
+
+        # Status bar at the bottom
         self.create_status_bar()
         main_layout.addWidget(self.status_bar)
-        
-        # Word suggestions
+
         self.setup_completer()
+
+        # Set dark theme and consistent font
+        self.setStyleSheet('''
+            QWidget { background: #23232a; color: #e0e0e0; font-family: 'Fira Code', 'Consolas', monospace; font-size: 13px; }
+            QMenuBar, QToolBar, QStatusBar { background: #23232a; color: #e0e0e0; }
+            QLineEdit, QTextEdit { background: #18181c; color: #e0e0e0; border: 1px solid #333; }
+            QPushButton { background: #23232a; color: #e0e0e0; border: 1px solid #333; padding: 2px 8px; }
+            QComboBox { background: #23232a; color: #e0e0e0; border: 1px solid #333; }
+            QLabel { color: #b0b0b0; }
+            QListWidget { background: #18181c; color: #e0e0e0; border: 1px solid #333; }
+        ''')
 
     def create_menu_bar(self):
         self.menu_bar = QMenuBar()
@@ -194,6 +228,12 @@ class LatexEditorEnv(QWidget):
         self.toggle_output_action.setChecked(True)
         self.toggle_output_action.triggered.connect(self.toggle_output)
         view_menu.addAction(self.toggle_output_action)
+
+        self.toggle_pdf_preview_action = QAction("PDF Preview", self)
+        self.toggle_pdf_preview_action.setCheckable(True)
+        self.toggle_pdf_preview_action.setChecked(False)
+        self.toggle_pdf_preview_action.triggered.connect(self.toggle_pdf_preview)
+        view_menu.addAction(self.toggle_pdf_preview_action)
         
         view_menu.addSeparator()
         
@@ -268,6 +308,14 @@ class LatexEditorEnv(QWidget):
         section_btn.triggered.connect(lambda: self.insert_latex_command("\\section{}"))
         self.toolbar.addAction(section_btn)
 
+        # PDF Preview toggle
+        pdf_preview_btn = QAction("PDF Preview", self)
+        pdf_preview_btn.setCheckable(True)
+        pdf_preview_btn.setChecked(False)
+        pdf_preview_btn.triggered.connect(self.toggle_pdf_preview)
+        self.toolbar.addAction(pdf_preview_btn)
+        self.pdf_preview_action = pdf_preview_btn
+
     def create_control_panel(self):
         self.control_panel = QFrame()
         self.control_panel.setFrameStyle(QFrame.StyledPanel)
@@ -282,6 +330,10 @@ class LatexEditorEnv(QWidget):
             if index >= 0:
                 self.compiler_combo.setCurrentIndex(index)
         
+        # See Compilers button
+        see_compilers_btn = QPushButton("See Compilers")
+        see_compilers_btn.clicked.connect(self.show_compilers_dialog)
+        
         # Status
         self.status_label = QLabel()
         if self.compiler:
@@ -293,8 +345,64 @@ class LatexEditorEnv(QWidget):
         
         control_layout.addWidget(compiler_label)
         control_layout.addWidget(self.compiler_combo)
+        control_layout.addWidget(see_compilers_btn)
         control_layout.addStretch()
         control_layout.addWidget(self.status_label)
+
+    def show_compilers_dialog(self):
+        from PyQt5.QtWidgets import QDialog, QVBoxLayout, QListWidget, QPushButton, QFileDialog, QHBoxLayout, QMessageBox
+        import shutil
+        class CompilersDialog(QDialog):
+            def __init__(self, parent, detected, user_added):
+                super().__init__(parent)
+                self.setWindowTitle("Available LaTeX Compilers")
+                self.setMinimumWidth(400)
+                self.detected = detected
+                self.user_added = user_added
+                self.layout = QVBoxLayout(self)
+                self.list_widget = QListWidget()
+                self.refresh_list()
+                self.layout.addWidget(self.list_widget)
+                btn_layout = QHBoxLayout()
+                self.add_btn = QPushButton("Locate More Compilers...")
+                self.add_btn.clicked.connect(self.add_compiler)
+                btn_layout.addWidget(self.add_btn)
+                self.set_btn = QPushButton("Set as Default")
+                self.set_btn.clicked.connect(self.set_default)
+                btn_layout.addWidget(self.set_btn)
+                self.layout.addLayout(btn_layout)
+            def refresh_list(self):
+                self.list_widget.clear()
+                for exe, path in self.detected.items():
+                    self.list_widget.addItem(f"{exe}: {path if path else 'Not found'}")
+                for exe, path in self.user_added.items():
+                    self.list_widget.addItem(f"(User) {exe}: {path}")
+            def add_compiler(self):
+                file_path, _ = QFileDialog.getOpenFileName(self, "Locate LaTeX Compiler", "", "Executables (*.exe);;All Files (*)")
+                if file_path:
+                    exe_name = os.path.basename(file_path)
+                    self.user_added[exe_name] = file_path
+                    self.refresh_list()
+            def set_default(self):
+                current = self.list_widget.currentItem()
+                if not current:
+                    QMessageBox.warning(self, "No Selection", "Select a compiler to set as default.")
+                    return
+                text = current.text()
+                exe = text.split(":")[0].replace("(User) ", "").strip()
+                self.parent().compiler_combo.setCurrentText(exe)
+                self.parent().compiler = exe
+                self.accept()
+        # Detect compilers
+        detected = {exe: shutil.which(exe) for exe in ["pdflatex", "xelatex", "lualatex"]}
+        if not hasattr(self, '_user_added_compilers'):
+            self._user_added_compilers = {}
+        dlg = CompilersDialog(self, detected, self._user_added_compilers)
+        dlg.exec_()
+        # Update combo box with user-added compilers
+        for exe in self._user_added_compilers:
+            if self.compiler_combo.findText(exe) == -1:
+                self.compiler_combo.addItem(exe)
 
     def create_editor_area(self):
         self.editor_container = QFrame()
@@ -487,6 +595,12 @@ class LatexEditorEnv(QWidget):
         self.output_container.setVisible(self.show_output)
         self.toggle_output_action.setChecked(self.show_output)
 
+    def toggle_pdf_preview(self):
+        visible = not self.pdf_preview_container.isVisible()
+        self.pdf_preview_container.setVisible(visible)
+        self.pdf_preview_action.setChecked(visible)
+        self.toggle_pdf_preview_action.setChecked(visible)
+
     def change_layout(self, mode):
         self.layout_mode = mode
         if mode == "horizontal":
@@ -546,9 +660,43 @@ class LatexEditorEnv(QWidget):
         if exit_code == 0:
             self.output.append("\n✓ Compilation successful!")
             self.status_bar.showMessage("Compilation successful")
+            self.update_pdf_preview()
         else:
             self.output.append(f"\n✗ Compilation failed (exit code: {exit_code})")
             self.status_bar.showMessage("Compilation failed")
+
+    def update_pdf_preview(self):
+        pdf_path = os.path.splitext(self._file_path)[0] + ".pdf"
+        if os.path.exists(pdf_path):
+            if PDF_VIEW_AVAILABLE:
+                self.pdf_doc.load(pdf_path)
+                self.pdf_view.setPageMode(QPdfView.SinglePage)
+                self.pdf_view.setZoomMode(QPdfView.FitInView)
+                self.pdf_preview_container.setVisible(True)
+                self.pdf_preview_action.setChecked(True)
+                self.toggle_pdf_preview_action.setChecked(True)
+            else:
+                self.pdf_preview_container.setVisible(True)
+                self.open_pdf_btn.setEnabled(True)
+                self.pdf_preview_action.setChecked(True)
+                self.toggle_pdf_preview_action.setChecked(True)
+        else:
+            if PDF_VIEW_AVAILABLE:
+                self.pdf_doc.load('')
+            if hasattr(self, 'open_pdf_btn'):
+                self.open_pdf_btn.setEnabled(False)
+
+    def open_pdf_external(self):
+        pdf_path = os.path.splitext(self._file_path)[0] + ".pdf"
+        if os.path.exists(pdf_path):
+            if sys.platform.startswith('win'):
+                os.startfile(pdf_path)
+            elif sys.platform.startswith('darwin'):
+                subprocess.call(['open', pdf_path])
+            else:
+                subprocess.call(['xdg-open', pdf_path])
+        else:
+            QMessageBox.warning(self, "PDF Not Found", "No PDF file found to open.")
 
     # Search operations
     def search_in_editor(self, text):
