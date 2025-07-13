@@ -142,13 +142,37 @@ class MainTabWidget(QTabWidget):
         self.setTabsClosable(True)
         self.tabCloseRequested.connect(self.close_tab)
         self.file_open_callback = file_open_callback
-        
+        self._tab_bar_visible = True
+        self._tab_width = 100  # percent, default
         # Connect to theme changes
         theme_manager_singleton.themeChanged.connect(self.set_theme)
         # Apply initial theme
         theme_data = theme_manager_singleton.get_theme()
         self.set_theme(theme_data)
-    
+
+    def set_tab_bar_visible(self, visible: bool):
+        self._tab_bar_visible = visible
+        self.tabBar().setVisible(visible)
+
+    def set_tab_width(self, percent: int):
+        self._tab_width = percent
+        # Clamp between 50% and 200%
+        percent = max(50, min(200, percent))
+        base_width = 80  # base min-width in px
+        width = int(base_width * percent / 100)
+        style = self.styleSheet()
+        # Remove any previous min-width
+        import re
+        style = re.sub(r"min-width: ?[0-9]+px;", "", style)
+        style += f"\nQTabBar::tab {{ min-width: {width}px; }}"
+        self.setStyleSheet(style)
+
+    def get_tab_width(self):
+        return self._tab_width
+
+    def get_tab_bar_visible(self):
+        return self._tab_bar_visible
+
     def set_theme(self, theme_data):
         # No per-widget stylesheet needed; main window applies global style
         pass
@@ -255,6 +279,8 @@ class TextEditor(QMainWindow):
         self.checkpoint_manager = CheckpointManager()
         self.music_player = None
         self.child_windows = []  # Keep references to child windows
+        self.tab_bar_visible = True
+        self.tab_width = 100
         self.init_ui()
         self.apply_theme(self.theme)
         # Always use classic style
@@ -551,6 +577,39 @@ class TextEditor(QMainWindow):
         advanced_loading_action = QAction("Open Large File (Advanced Loading)", self)
         advanced_loading_action.triggered.connect(self.open_large_file_advanced)
         tools_menu.addAction(advanced_loading_action)
+
+        # Tab Size Controls as real buttons
+        from PyQt5.QtWidgets import QMenu, QWidgetAction, QWidget, QHBoxLayout, QPushButton, QLabel
+        tab_size_menu = QMenu("Tab Size", self)
+        tab_size_widget = QWidget()
+        tab_size_layout = QHBoxLayout(tab_size_widget)
+        tab_size_layout.setContentsMargins(8, 2, 8, 2)
+        tab_size_layout.setSpacing(6)
+        btn_minus = QPushButton("-")
+        btn_minus.setFixedWidth(28)
+        btn_minus.clicked.connect(lambda: self.change_tab_size(-10))
+        btn_reset = QPushButton("100%")
+        btn_reset.setFixedWidth(48)
+        btn_reset.clicked.connect(lambda: self.set_tab_size(100))
+        btn_plus = QPushButton("+")
+        btn_plus.setFixedWidth(28)
+        btn_plus.clicked.connect(lambda: self.change_tab_size(10))
+        tab_size_layout.addWidget(btn_minus)
+        tab_size_layout.addWidget(btn_reset)
+        tab_size_layout.addWidget(btn_plus)
+        # Add No Tabs/Show Tabs toggle button
+        self.btn_no_tabs = QPushButton("No Tabs")
+        self.btn_no_tabs.setFixedWidth(70)
+        self.btn_no_tabs.setCheckable(True)
+        self.btn_no_tabs.setChecked(not self.tab_bar_visible)
+        self.btn_no_tabs.clicked.connect(self.toggle_tab_bar_button)
+        tab_size_layout.addWidget(self.btn_no_tabs)
+        # Ensure the widget is added to the menu
+        tab_size_widget.setLayout(tab_size_layout)
+        tab_size_action = QWidgetAction(self)
+        tab_size_action.setDefaultWidget(tab_size_widget)
+        tab_size_menu.addAction(tab_size_action)
+        view_menu.addMenu(tab_size_menu)
 
     def open_syntax_highlighting_dialog(self):
         dlg = SyntaxHighlightingDialog(self)
@@ -1002,6 +1061,37 @@ class TextEditor(QMainWindow):
     @property
     def tabs(self):
         return self.get_tabs()
+
+    def toggle_tab_bar(self, checked):
+        self.tab_bar_visible = checked
+        for editor in self.editors:
+            if hasattr(editor, 'set_tab_bar_visible'):
+                editor.set_tab_bar_visible(checked)
+
+    def set_tab_size(self, percent):
+        self.tab_width = percent
+        for editor in self.editors:
+            if hasattr(editor, 'set_tab_width'):
+                editor.set_tab_width(percent)
+
+    def change_tab_size(self, delta):
+        new_size = self.tab_width + delta
+        self.set_tab_size(new_size)
+
+    def toggle_tab_bar_button(self):
+        # Toggle tab bar visibility using the button
+        new_state = not self.tab_bar_visible
+        self.tab_bar_visible = new_state
+        for editor in self.editors:
+            if hasattr(editor, 'set_tab_bar_visible'):
+                editor.set_tab_bar_visible(new_state)
+        # Update button text/state
+        if hasattr(self, 'btn_no_tabs'):
+            self.btn_no_tabs.setChecked(not new_state)
+            if new_state:
+                self.btn_no_tabs.setText("No Tabs")
+            else:
+                self.btn_no_tabs.setText("Show Tabs")
 
 if __name__ == '__main__':
     try:
