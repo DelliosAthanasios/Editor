@@ -570,6 +570,16 @@ class TextEditor(QMainWindow):
         self.update_separator_theme(theme_data)
         # Always use classic style
         self.setStyleSheet(get_classic_styles(theme_data))
+        # --- ADDED: Set tab bar and splitter styles ---
+        # Set tab bar stylesheet for all MainTabWidget instances
+        from global_.theme_manager import get_tab_bar_styles, get_separator_styles
+        tab_bar_style = get_tab_bar_styles(theme_data)
+        for editor in self.editors:
+            editor.setStyleSheet(tab_bar_style)
+        # Set splitter style
+        splitter_style = get_separator_styles(theme_data)
+        self.main_splitter.setStyleSheet(splitter_style)
+        self.editor_splitter.setStyleSheet(splitter_style)
 
     def update_menu_bar_theme(self, theme_data):
         """Update menu bar styling to match the current theme"""

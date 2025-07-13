@@ -50,9 +50,19 @@ if __name__ == '__main__':
     app = QApplication(sys.argv)
     # Apply the current theme from theme manager instead of hardcoded dark palette
     try:
-        from global_.theme_manager import theme_manager_singleton
+        from global_.theme_manager import theme_manager_singleton, get_menu_bar_styles, get_tab_bar_styles, get_separator_styles
         theme_manager_singleton.apply_theme(app, theme_manager_singleton.current_theme_key)
         app.setStyle("Fusion")
+        # --- ADDED: Set menu bar, tab bar, and splitter styles ---
+        window = CanvasWindow()
+        # Set menu bar style if present
+        if window.menuBar() is not None:
+            window.menuBar().setStyleSheet(get_menu_bar_styles(theme_manager_singleton.get_theme()))
+        # Set tab bar style for all editors
+        for editor in getattr(window, 'editors', []):
+            editor.setStyleSheet(get_tab_bar_styles(theme_manager_singleton.get_theme()))
+        # Set splitter style
+        window.splitter.setStyleSheet(get_separator_styles(theme_manager_singleton.get_theme()))
     except Exception as e:
         print(f"Warning: Could not apply theme: {e}")
         # Fallback to basic dark theme

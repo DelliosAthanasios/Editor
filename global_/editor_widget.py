@@ -62,6 +62,11 @@ class EditorTabWidget(QWidget):
             self.numberline.set_theme(theme_data)
         if hasattr(self, "minimap"):
             self.minimap.set_theme(theme_data)
+        # --- ADDED: Set parent tab widget's stylesheet to tab bar style ---
+        from global_.theme_manager import get_tab_bar_styles
+        parent = self.parent()
+        if parent is not None and hasattr(parent, 'setStyleSheet'):
+            parent.setStyleSheet(get_tab_bar_styles(theme_data))
 
     def update_layout(self):
         while self.layout.count():

@@ -134,18 +134,21 @@ def get_menu_bar_styles(theme_data):
 def get_separator_styles(theme_data):
     """Get separator styling based on theme data"""
     palette_data = theme_data.get("palette", {})
+    editor_data = theme_data.get("editor", {})
     separator_color = palette_data.get("mid", "#3c3c3c")
-    
+    bg_color = editor_data.get("background", palette_data.get("window", "#23232a"))
+    # Explicitly remove borders and set background
     separator_style = f"""
     QSplitter::handle {{
         background-color: {separator_color};
         border: none;
     }}
-    QSplitter::handle:horizontal {{
-        width: 1px;
+    QSplitter {{
+        background: {bg_color};
+        border: none;
     }}
-    QSplitter::handle:vertical {{
-        height: 1px;
+    QWidget {{
+        background: {bg_color};
     }}
     """
     return separator_style
@@ -160,11 +163,15 @@ def get_tab_bar_styles(theme_data):
     selected_fg = palette.get("highlight_text", "#ffffff")
     tab_bg = editor.get("background", bg)
     tab_fg = editor.get("foreground", fg)
-    
+    # Explicitly remove pane border and set background
     return f'''
     QTabBar, QTabWidget::pane {{
         background: {bg};
         color: {fg};
+        border: none;
+    }}
+    QTabWidget::pane {{
+        background: {tab_bg};
         border: none;
     }}
     QTabBar::tab {{
@@ -185,10 +192,6 @@ def get_tab_bar_styles(theme_data):
     }}
     QTabBar::tab:!selected {{
         margin-top: 2px;
-    }}
-    QTabWidget::pane {{
-        border-top: 2px solid {border};
-        top: -0.5em;
     }}
     '''
 
