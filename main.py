@@ -585,7 +585,9 @@ class TextEditor(QMainWindow):
         help_menu.addAction("Tutorial")
         help_menu.addAction("About Developer")
         tools_menu = menu_bar.addMenu("Tools")
-        tools_menu.addAction("Process Manager")
+        process_manager_action = QAction("Process Manager", self)
+        process_manager_action.triggered.connect(self.open_process_manager)
+        tools_menu.addAction(process_manager_action)
         tools_menu.addAction("Control Panel")
         open_pdf_action = QAction("Open PDF", self)
         open_pdf_action.triggered.connect(self.open_pdf_file)
@@ -991,6 +993,18 @@ class TextEditor(QMainWindow):
         emulator_tab = AssemblyEmulatorTab(self)
         tab_widget.addTab(emulator_tab, "CPU Emulator")
         tab_widget.setCurrentWidget(emulator_tab)
+
+    def open_process_manager(self):
+        """Open the process manager in a new tab"""
+        try:
+            from global_.task_manager import create_task_manager_tab
+            task_manager_widget = create_task_manager_tab(self)
+            self.get_active_tabwidget().addTab(task_manager_widget, "Process Manager")
+            self.get_active_tabwidget().setCurrentWidget(task_manager_widget)
+        except ImportError as e:
+            QMessageBox.critical(self, "Error", f"Failed to load Process Manager: {str(e)}")
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to open Process Manager: {str(e)}")
 
     def open_large_file_advanced(self):
         """Open a file using advanced loading regardless of size"""
