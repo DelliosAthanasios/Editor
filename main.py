@@ -28,6 +28,7 @@ from global_.syntax_highlighter import GenericHighlighter
 from global_.syntax_highlighting_dialog import SyntaxHighlightingDialog
 from global_.language_detection import detect_language_by_extension
 from global_.diagramm_sketch import DiagrammSketchWidget
+from global_.dynamic_saving import enable_dynamic_saving_for_qt
 
 FONT_CONFIG_PATH = "font_config.json"
 
@@ -321,6 +322,7 @@ class TextEditor(QMainWindow):
         self.setup_split_actions()
         # Connect to theme changes
         theme_manager_singleton.themeChanged.connect(self.on_theme_changed)
+        enable_dynamic_saving_for_qt(self)
 
     def editor_factory(self):
         return MainTabWidget(file_open_callback=self.open_file_in_editor_tab)
@@ -1035,6 +1037,13 @@ class TextEditor(QMainWindow):
             except Exception as e:
                 QMessageBox.critical(self, "Error", f"Failed to open file: {str(e)}")
 
+    def get_tabs(self):
+        # For dynamic saving compatibility
+        return self.get_active_tabwidget()
+    @property
+    def tabs(self):
+        return self.get_tabs()
+
 if __name__ == '__main__':
     try:
         app = QApplication(sys.argv)
@@ -1044,8 +1053,6 @@ if __name__ == '__main__':
         edit_actions.connect_edit_menu(window)
         keybinds.integrate_keybinds_menu(window)
         window.show()
-        import global_.dynamic_saving
-        global_.dynamic_saving.enable_dynamic_saving(window)
         sys.exit(app.exec_())
     except Exception as exc:
         print('An error occurred while running the application:', exc)
