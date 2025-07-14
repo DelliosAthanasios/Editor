@@ -10,6 +10,8 @@ from PyQt5.QtGui import QColor
 from main import TextEditor, set_dark_palette
 from global_.dynamic_saving import enable_dynamic_saving_for_qt
 from global_.keybinds import integrate_keybinds_menu
+# Import Minibar
+from minibar.minibar import Minibar
 
 class CanvasWindow(QMainWindow):
     def __init__(self):

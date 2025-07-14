@@ -9,7 +9,7 @@ from PyQt5.QtWidgets import (
     QMessageBox, QVBoxLayout, QTreeView, QFileSystemModel, QSplitter, QDialog, QTextEdit, QActionGroup
 )
 from PyQt5.QtGui import QFont, QPalette, QColor, QPainter, QFontMetrics, QTextCursor
-from PyQt5.QtCore import Qt, QTimer, QRect, QDir
+from PyQt5.QtCore import Qt, QTimer, QRect, QDir, QPoint
 
 from global_.file_explorer import FileExplorer
 from global_.file_tree import FileTreeWidget
@@ -32,6 +32,7 @@ from global_.dynamic_saving import enable_dynamic_saving_for_qt
 from Latex_edit.latex_env import LatexEditorEnv
 from global_.numberline import NumberLine
 from global_.editor_widget import EditorTabWidget, load_font_config
+from minibar.minibar import Minibar
 
 FONT_CONFIG_PATH = "font_config.json"
 
@@ -509,6 +510,11 @@ class TextEditor(QMainWindow):
         code_explorer_action = QAction("Enable Code Explorer", self)
         code_explorer_action.triggered.connect(self.enable_code_explorer)
         view_menu.addAction(code_explorer_action)
+        
+        # Add Open Minibar option
+        open_minibar_action = QAction("Open Minibar", self)
+        open_minibar_action.triggered.connect(self.show_minibar)
+        view_menu.addAction(open_minibar_action)
         
         split_screen_menu = view_menu.addMenu("Split Screen")
         split_horizontal_action = QAction("Split Horizontally", self)
@@ -1109,6 +1115,34 @@ class TextEditor(QMainWindow):
                 self.btn_no_tabs.setText("No Tabs")
             else:
                 self.btn_no_tabs.setText("Show Tabs")
+
+    def show_minibar(self):
+        if not hasattr(self, '_minibar') or self._minibar is None:
+            self._minibar = Minibar(self)
+        self._minibar.show()
+        self._minibar.raise_()
+        self._minibar.input.setFocus()
+        self.position_minibar()
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self.position_minibar()
+
+    def moveEvent(self, event):
+        super().moveEvent(event)
+        self.position_minibar()
+
+    def position_minibar(self):
+        if hasattr(self, '_minibar') and self._minibar is not None and self._minibar.isVisible():
+            width = self.width()
+            height = self._minibar.height()
+            x = 0
+            margin = 12  # Move minibar up from the bottom
+            y = self.height() - height - margin
+            if y < 0:
+                y = 0
+            self._minibar.setFixedWidth(width)
+            self._minibar.move(self.mapToGlobal(self.rect().topLeft()) + QPoint(x, y))
 
 if __name__ == '__main__':
     try:
