@@ -1,6 +1,6 @@
 {
   "Undo": {
-    "keys": "Ctrl+3",
+    "keys": "Ctrl+Z",
     "description": "Undo last change"
   },
   "Redo": {

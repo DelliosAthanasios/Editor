@@ -611,6 +611,23 @@ class TextEditor(QMainWindow):
         tab_size_menu.addAction(tab_size_action)
         view_menu.addMenu(tab_size_menu)
 
+        navigation_menu = edit_menu.addMenu("Navigation")
+        navigation_menu.addAction("Go to Start of Line")
+        navigation_menu.addAction("Go to End of Line")
+        navigation_menu.addAction("Go to Next Word")
+        navigation_menu.addAction("Go to Previous Word")
+        navigation_menu.addAction("Go Up One Line")
+        navigation_menu.addAction("Go Down One Line")
+        navigation_menu.addAction("Go Forward One Char")
+        navigation_menu.addAction("Go Backward One Char")
+        navigation_menu.addAction("Go to Start of Document")
+        navigation_menu.addAction("Go to End of Document")
+        navigation_menu.addAction("Delete Current Line")
+        navigation_menu.addAction("Transpose Characters")
+        navigation_menu.addAction("Set Mark")
+        navigation_menu.addAction("Select to End of Line")
+        navigation_menu.addAction("Select to Start of Line")
+
     def open_syntax_highlighting_dialog(self):
         dlg = SyntaxHighlightingDialog(self)
         dlg.exec_()

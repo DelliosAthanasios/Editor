@@ -169,6 +169,12 @@ def update_menu_action_labels(main_window, keybinds):
         "Toggle Minimap": "Toggle Minimap",
         "Toggle Number Line": "Toggle Number Line",
         "Toggle File Tree": "Toggle File Tree",
+        "New Tab": "New Tab",
+        "Open File Explorer": "Open File Explorer",
+        "Create Checkpoint": "Create Checkpoint",
+        "Go to Next Checkpoint": "Go to Next Checkpoint",
+        "Go to Previous Checkpoint": "Go to Previous Checkpoint",
+        "Manage Checkpoints...": "Manage Checkpoints...",
     }
     for menu in menu_bar.findChildren(type(menu_bar)):
         for action in menu.actions():
@@ -202,6 +208,46 @@ def configure_keybinds(main_window):
     dlg.keybinds_changed.connect(on_keybinds_changed)
     dlg.exec_()
 
+def check_keybind_coverage(main_window, keybinds):
+    """Check which keybinds are not mapped to menu actions and print/report them."""
+    menu_bar = main_window.menuBar()
+    menu_action_names = set()
+    for action in menu_bar.actions():
+        if action.menu():
+            for subaction in action.menu().actions():
+                text = subaction.text().split(" [")[0]
+                menu_action_names.add(text)
+    # Map menu text to keybind action names (same as in update_menu_action_labels)
+    menu_map = {
+        "Undo": "Undo",
+        "Redo": "Redo",
+        "Select All": "Select All",
+        "Find": "Search",
+        "Find and Replace": "Replace",
+        "Line": "Go to Line",
+        "Word": "Go to Word",
+        "Save File": "Save File",
+        "Open File": "Open File",
+        "New File": "New File",
+        "Close Tab": "Close Tab",
+        "Duplicate File": "Duplicate File",
+        "Toggle Minimap": "Toggle Minimap",
+        "Toggle Number Line": "Toggle Number Line",
+        "Toggle File Tree": "Toggle File Tree",
+        "New Tab": "New Tab",
+        "Open File Explorer": "Open File Explorer",
+        "Create Checkpoint": "Create Checkpoint",
+        "Go to Next Checkpoint": "Go to Next Checkpoint",
+        "Go to Previous Checkpoint": "Go to Previous Checkpoint",
+        "Manage Checkpoints...": "Manage Checkpoints...",
+    }
+    covered = set(menu_map.values()) & set(keybinds.keys())
+    missing = set(keybinds.keys()) - covered
+    if missing:
+        print("Keybinds not mapped to menu actions:", missing)
+    else:
+        print("All keybinds are mapped to menu actions.")
+
 def integrate_keybinds_menu(main_window):
     menu_bar = main_window.menuBar()
     keybind_menu = None
@@ -217,4 +263,5 @@ def integrate_keybinds_menu(main_window):
                 act.triggered.connect(lambda: configure_keybinds(main_window))
     keybinds = load_keybinds()
     apply_keybinds_to_editor(main_window, keybinds)
-    update_menu_action_labels(main_window, keybinds) 
+    update_menu_action_labels(main_window, keybinds)
+    check_keybind_coverage(main_window, keybinds) 
