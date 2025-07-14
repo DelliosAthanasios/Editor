@@ -1,7 +1,102 @@
 import json
+import os
+from PyQt5.QtCore import QObject, pyqtSignal
 from PyQt5.QtWidgets import QShortcut
 from PyQt5.QtGui import QKeySequence, QTextCursor
 from .config import KEYBINDS_CONFIG_PATH, DEFAULT_KEYBINDS
+
+KEYBIND_PROFILES_PATH = os.path.join(os.path.dirname(__file__), "keybind_profiles.json")
+
+class KeybindManager(QObject):
+    keybinds_changed = pyqtSignal(dict)
+    profile_changed = pyqtSignal(str)
+    _instance = None
+
+    def __new__(cls):
+        if cls._instance is None:
+            cls._instance = super().__new__(cls)
+            cls._instance._init()
+        return cls._instance
+
+    def _init(self):
+        self.profiles = {}
+        self.current_profile = "default"
+        self.load_profiles()
+
+    def load_profiles(self):
+        if os.path.exists(KEYBIND_PROFILES_PATH):
+            try:
+                with open(KEYBIND_PROFILES_PATH, "r") as f:
+                    self.profiles = json.load(f)
+            except Exception:
+                self.profiles = {"default": DEFAULT_KEYBINDS.copy()}
+        else:
+            self.profiles = {"default": DEFAULT_KEYBINDS.copy()}
+        if self.current_profile not in self.profiles:
+            self.current_profile = list(self.profiles.keys())[0]
+
+    def save_profiles(self):
+        with open(KEYBIND_PROFILES_PATH, "w") as f:
+            json.dump(self.profiles, f, indent=2)
+
+    def get_keybinds(self):
+        return self.profiles.get(self.current_profile, DEFAULT_KEYBINDS.copy())
+
+    def set_keybind(self, action, keys):
+        if self.current_profile not in self.profiles:
+            self.profiles[self.current_profile] = DEFAULT_KEYBINDS.copy()
+        self.profiles[self.current_profile][action]["keys"] = keys
+        self.save_profiles()
+        self.keybinds_changed.emit(self.get_keybinds())
+
+    def set_profile(self, profile):
+        if profile in self.profiles:
+            self.current_profile = profile
+            self.keybinds_changed.emit(self.get_keybinds())
+            self.profile_changed.emit(profile)
+
+    def add_profile(self, name):
+        if name not in self.profiles:
+            self.profiles[name] = DEFAULT_KEYBINDS.copy()
+            self.save_profiles()
+
+    def delete_profile(self, name):
+        if name in self.profiles and name != "default":
+            del self.profiles[name]
+            if self.current_profile == name:
+                self.current_profile = "default"
+            self.save_profiles()
+            self.keybinds_changed.emit(self.get_keybinds())
+            self.profile_changed.emit(self.current_profile)
+
+    def reset_profile(self, name=None):
+        if name is None:
+            name = self.current_profile
+        self.profiles[name] = DEFAULT_KEYBINDS.copy()
+        self.save_profiles()
+        self.keybinds_changed.emit(self.get_keybinds())
+
+    def validate_keybinds(self, keybinds):
+        seen = {}
+        for action, info in keybinds.items():
+            keys = info.get("keys", "").strip()
+            if not keys:
+                return False, f"Keybind for '{action}' is empty."
+            # Split multi-step sequences
+            steps = [s.strip() for s in keys.split(',') if s.strip()]
+            # Prevent duplicate consecutive steps in a sequence
+            for i in range(1, len(steps)):
+                if steps[i] == steps[i-1]:
+                    return False, f"Duplicate consecutive step '{steps[i]}' in keybind for '{action}'."
+            # Check for duplicate full sequences
+            seq_tuple = tuple(steps)
+            if seq_tuple in seen:
+                other_action = seen[seq_tuple]
+                return False, f"Duplicate keybind sequence: '{', '.join(steps)}' for '{action}' and '{other_action}'"
+            seen[seq_tuple] = action
+        return True, ""
+
+keybind_manager = KeybindManager()
 
 # --- Config IO ---
 def load_keybinds():
