@@ -15,7 +15,7 @@ from global_.file_explorer import FileExplorer
 from global_.file_tree import FileTreeWidget
 import global_.edit_actions as edit_actions
 from global_.edit_actions import SearchReplaceDialog
-import global_.keybinds as keybinds
+from global_.keybinds import show_default_keybinds, configure_keybinds, integrate_keybinds_menu
 from global_.minimap import Minimap
 from global_.theme_manager import theme_manager_singleton, get_editor_styles, get_menu_bar_styles, get_separator_styles, get_tab_bar_styles, get_classic_styles, get_user_styles, ThemeManagerDialog, load_user_prefs, save_user_prefs
 from global_.checkpoints import CheckpointManager, CheckpointDialog, CheckpointManagerDialog
@@ -1100,7 +1100,7 @@ if __name__ == '__main__':
         app.setStyle(QStyleFactory.create("Fusion"))
         window = TextEditor()
         edit_actions.connect_edit_menu(window)
-        keybinds.integrate_keybinds_menu(window)
+        integrate_keybinds_menu(window)
         window.show()
         sys.exit(app.exec_())
     except Exception as exc:

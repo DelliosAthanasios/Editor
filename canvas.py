@@ -9,6 +9,7 @@ from PyQt5.QtGui import QColor
 # Import the main window and set_dark_palette from main.py
 from main import TextEditor, set_dark_palette
 from global_.dynamic_saving import enable_dynamic_saving_for_qt
+from global_.keybinds import integrate_keybinds_menu
 
 class CanvasWindow(QMainWindow):
     def __init__(self):
@@ -36,6 +37,7 @@ class CanvasWindow(QMainWindow):
         self.splitter.addWidget(editor)
         self.editors.append(editor)
         enable_dynamic_saving_for_qt(editor)
+        integrate_keybinds_menu(editor)
 
     def add_split_editor(self):
         self.split_window()
