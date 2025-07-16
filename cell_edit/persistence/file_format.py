@@ -60,7 +60,13 @@ class CellEditorFileFormat:
         
         # Get all non-empty cells from the sparse matrix
         cells_data = []
-        max_row, max_col = sheet.get_used_range()
+        used_range = sheet.get_used_range()
+        if used_range is None:
+            max_row = -1
+            max_col = -1
+        else:
+            max_row = used_range.end.row
+            max_col = used_range.end.col
         for r in range(max_row + 1):
             for c in range(max_col + 1):
                 coord = CellCoordinate(r, c)

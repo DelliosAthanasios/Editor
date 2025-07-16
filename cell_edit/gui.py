@@ -132,7 +132,9 @@ class SpreadsheetApp(tk.Tk):
         self.app_config = get_config()
         self.undo_stack = []
         self.redo_stack = []
-        self._setup_demo_data()
+        # Start with a single blank sheet
+        if not self.workbook.sheets:
+            self.workbook.add_sheet("Sheet1")
         self.active_sheet = self.workbook.active_sheet
         self._build_menu()
         self._build_formula_bar()
@@ -150,17 +152,7 @@ class SpreadsheetApp(tk.Tk):
         self.config(menu=self.menu)
 
     def _setup_demo_data(self):
-        # Add demo sheets and values
-        sheet1 = self.workbook.add_sheet("Sheet1")
-        sheet2 = self.workbook.add_sheet("Sheet2")
-        sheet1.set_cell(CellCoordinate(0, 0), Cell(value="Name"))
-        sheet1.set_cell(CellCoordinate(0, 1), Cell(value="Score"))
-        sheet1.set_cell(CellCoordinate(1, 0), Cell(value="Alice"))
-        sheet1.set_cell(CellCoordinate(1, 1), Cell(value=95))
-        sheet1.set_cell(CellCoordinate(2, 0), Cell(value="Bob"))
-        sheet1.set_cell(CellCoordinate(2, 1), Cell(value=88))
-        sheet2.set_cell(CellCoordinate(0, 0), Cell(value="Data"))
-        self.workbook.active_sheet = sheet1
+        pass  # No demo data; keep blank by default
 
     def _build_menu(self):
         self.menu = tk.Menu(self)
@@ -196,6 +188,10 @@ class SpreadsheetApp(tk.Tk):
         analytics_menu.add_command(label="Data Transform", command=self.data_transform)
         analytics_menu.add_command(label="Validate Data", command=self.validate_data)
         analytics_menu.add_command(label="Statistics", command=self.show_statistics)
+        analytics_menu.add_separator()
+        analytics_menu.add_command(label="Machine Learning", command=self.machine_learning)
+        analytics_menu.add_command(label="Streaming Data", command=self.streaming_data)
+        analytics_menu.add_command(label="Pandas Integration", command=self.pandas_integration)
         self.menu.add_cascade(label="Analytics", menu=analytics_menu)
         # Performance menu
         perf_menu = tk.Menu(self.menu, tearoff=0)
@@ -221,6 +217,10 @@ class SpreadsheetApp(tk.Tk):
         self.formula_entry.bind("<Return>", self.on_formula_enter)
 
     def _build_sheet_tabs(self):
+        # Clear old tabs if they exist
+        if hasattr(self, 'sheet_tabs'):
+            for i in reversed(range(self.sheet_tabs.index('end'))):
+                self.sheet_tabs.forget(i)
         self.sheet_tabs = ttk.Notebook(self)
         self.sheet_frames = {}
         for sheet in self.workbook.sheets:
@@ -324,8 +324,17 @@ class SpreadsheetApp(tk.Tk):
         if messagebox.askyesno("New File", "Are you sure you want to create a new file?"):
             self.workbook = SimpleWorkbook()
             self.ui_manager = UIManager(self.workbook)
-            self._setup_demo_data()
+            # Start with a single blank sheet
+            if not self.workbook.sheets:
+                self.workbook.add_sheet("Sheet1")
             self.active_sheet = self.workbook.active_sheet
+            # Clear old tabs and grid
+            if hasattr(self, 'sheet_tabs'):
+                for i in reversed(range(self.sheet_tabs.index('end'))):
+                    self.sheet_tabs.forget(i)
+            if hasattr(self, 'grid_frame'):
+                for widget in self.grid_frame.winfo_children():
+                    widget.destroy()
             self._build_sheet_tabs()
             self._draw_grid()
             self._update_formula_bar()
@@ -334,14 +343,36 @@ class SpreadsheetApp(tk.Tk):
     def open_file(self, *args):
         filename = filedialog.askopenfilename(filetypes=[("Cell Editor Files", "*.cef"), ("All Files", "*.*")])
         if filename:
-            # TODO: Use persistence/file_format.py to load
-            self._update_status_bar(f"Opened {os.path.basename(filename)}")
+            try:
+                self.workbook = SimpleWorkbook()
+                self.file_format.load_workbook(filename, self.workbook)
+                self.ui_manager = UIManager(self.workbook)
+                # Set active_sheet to first loaded sheet
+                self.active_sheet = self.workbook.active_sheet
+                # Clear old tabs and grid
+                if hasattr(self, 'sheet_tabs'):
+                    for i in reversed(range(self.sheet_tabs.index('end'))):
+                        self.sheet_tabs.forget(i)
+                if hasattr(self, 'grid_frame'):
+                    for widget in self.grid_frame.winfo_children():
+                        widget.destroy()
+                self._build_sheet_tabs()
+                self._draw_grid()
+                self._update_formula_bar()
+                self._update_status_bar(f"Opened {os.path.basename(filename)}")
+            except Exception as e:
+                messagebox.showerror("Open File Error", f"Failed to open file: {e}")
+                self._update_status_bar("Failed to open file.")
 
     def save_file(self, *args):
         filename = filedialog.asksaveasfilename(defaultextension=".cef", filetypes=[("Cell Editor Files", "*.cef"), ("All Files", "*.*")])
         if filename:
-            # TODO: Use persistence/file_format.py to save
-            self._update_status_bar(f"Saved {os.path.basename(filename)}")
+            try:
+                self.file_format.save_workbook(self.workbook, filename)
+                self._update_status_bar(f"Saved {os.path.basename(filename)}")
+            except Exception as e:
+                messagebox.showerror("Save File Error", f"Failed to save file: {e}")
+                self._update_status_bar("Failed to save file.")
 
     def undo(self, *args):
         if self.undo_stack:
@@ -438,6 +469,21 @@ class SpreadsheetApp(tk.Tk):
     def on_exit(self, *args):
         if messagebox.askokcancel("Quit", "Do you really want to quit?"):
             self.destroy()
+
+    def machine_learning(self):
+        # TODO: Integrate analytics/machine_learning_hooks.py
+        self._update_status_bar("Machine Learning not implemented yet.")
+        messagebox.showinfo("Machine Learning", "Machine Learning features (train, predict, workflows) coming soon.")
+
+    def streaming_data(self):
+        # TODO: Integrate analytics/streaming_data.py
+        self._update_status_bar("Streaming Data not implemented yet.")
+        messagebox.showinfo("Streaming Data", "Streaming Data features (live feeds, real-time updates) coming soon.")
+
+    def pandas_integration(self):
+        # TODO: Integrate analytics/pandas_integration.py
+        self._update_status_bar("Pandas Integration not implemented yet.")
+        messagebox.showinfo("Pandas Integration", "Pandas DataFrame integration (import/export, sync) coming soon.")
 
 if __name__ == "__main__":
     app = SpreadsheetApp()
