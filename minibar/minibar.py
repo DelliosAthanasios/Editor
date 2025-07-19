@@ -2,6 +2,8 @@ import sys
 from PyQt5.QtWidgets import (QWidget, QLineEdit, QVBoxLayout, QLabel, QApplication)
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QFont
+from keysandfuncs.emacscommsbar import emacs_commands
+from PyQt5.QtWidgets import QMessageBox
 
 class Minibar(QWidget):
     def __init__(self, parent=None):
@@ -26,8 +28,25 @@ class Minibar(QWidget):
         self.input.setFont(QFont("Consolas", 12))
         self.input.setPlaceholderText("")
         self.input.setStyleSheet("background: #23232a; color: #fff; border: none; padding: 0 4px; font-size: 15px;")
+        self.input.returnPressed.connect(self.execute_command)
         layout.addWidget(self.input)
         self.setLayout(layout)
+
+    def execute_command(self):
+        text = self.input.text().strip()
+        if text in emacs_commands:
+            try:
+                # Pass the main window as context if needed
+                main_window = self.parent()
+                emacs_commands[text]["func"](main_window)
+            except Exception as e:
+                QMessageBox.critical(self, "Command Error", f"Error executing command '{text}': {e}")
+            self.input.clear()
+            self.hide()
+        else:
+            QMessageBox.warning(self, "Unknown Command", f"Unknown command: {text}")
+            self.input.clear()
+            self.hide()
 
     def showEvent(self, event):
         # Dock to bottom of parent

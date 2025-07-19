@@ -9,7 +9,7 @@ from PyQt5.QtGui import QColor
 # Import the main window and set_dark_palette from main.py
 from main import TextEditor, set_dark_palette
 from global_.dynamic_saving import enable_dynamic_saving_for_qt
-from global_.keybinds import integrate_keybinds_menu
+from keysandfuncs.keybinds import integrate_keybinds_menu
 # Import Minibar
 from minibar.minibar import Minibar
 
