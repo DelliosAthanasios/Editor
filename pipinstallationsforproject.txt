@@ -1,0 +1,6 @@
+pip install --upgrade pymupdf
+pip install PyQt5
+ pip install unicorn
+pip install keystone-engine
+pip install capstone
+pip install psutil
