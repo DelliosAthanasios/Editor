@@ -266,7 +266,7 @@ class MainTabWidget(QTabWidget):
 
 class TextEditor(QMainWindow):
     def __init__(self, canvas_parent=None):
-        super().__init__()
+        super().__init__(canvas_parent)
         self.canvas_parent = canvas_parent
         self.setWindowTitle("Third Edit")
         self.setGeometry(100, 100, 1200, 800)
@@ -290,6 +290,7 @@ class TextEditor(QMainWindow):
         # Connect to theme changes
         theme_manager_singleton.themeChanged.connect(self.on_theme_changed)
         enable_dynamic_saving_for_qt(self)
+        self._minibar = None
 
     def editor_factory(self):
         return MainTabWidget(file_open_callback=self.open_file_in_editor_tab)
@@ -1143,6 +1144,16 @@ class TextEditor(QMainWindow):
                 y = 0
             self._minibar.setFixedWidth(width)
             self._minibar.move(self.mapToGlobal(self.rect().topLeft()) + QPoint(x, y))
+
+    def keyPressEvent(self, event):
+        if event.key() == Qt.Key_QuoteLeft:  # ` key
+            if not hasattr(self, '_minibar') or self._minibar is None:
+                self._minibar = Minibar(self)
+            self._minibar.show()
+            self._minibar.raise_()
+            self._minibar.input.setFocus()
+            return
+        super().keyPressEvent(event)
 
 if __name__ == '__main__':
     try:

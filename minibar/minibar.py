@@ -36,17 +36,19 @@ class Minibar(QWidget):
         text = self.input.text().strip()
         if text in emacs_commands:
             try:
-                # Pass the main window as context if needed
                 main_window = self.parent()
                 emacs_commands[text]["func"](main_window)
             except Exception as e:
                 QMessageBox.critical(self, "Command Error", f"Error executing command '{text}': {e}")
             self.input.clear()
-            self.hide()
+            # Do not hide the minibar; return focus to main window/editor
+            if main_window:
+                main_window.setFocus()
         else:
             QMessageBox.warning(self, "Unknown Command", f"Unknown command: {text}")
             self.input.clear()
-            self.hide()
+            if self.parent():
+                self.parent().setFocus()
 
     def showEvent(self, event):
         # Dock to bottom of parent
