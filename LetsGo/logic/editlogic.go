@@ -30,3 +30,38 @@ Then we have text manipulation functions:
 /*
  we will continue with more text manipulation functions in the future
 */
+
+package logic
+
+// EditManager handles all file and text manipulation actions
+//
+type EditManager struct {
+	// Placeholder for undo/redo stacks, etc.
+}
+
+// File operations
+func (em *EditManager) NewFile()                 {}
+func (em *EditManager) OpenFile(filename string) {}
+func (em *EditManager) SaveFile()                {}
+func (em *EditManager) DuplicateFile()           {}
+func (em *EditManager) SaveAll()                 {}
+func (em *EditManager) CloseFile()               {}
+func (em *EditManager) EditFile()                {}
+func (em *EditManager) DeleteFile()              {}
+
+// Text manipulation
+func (em *EditManager) Undo()             {}
+func (em *EditManager) Redo()             {}
+func (em *EditManager) SelectAll()        {}
+func (em *EditManager) GoToStartOfLine()  {}
+func (em *EditManager) GoToEndOfLine()    {}
+func (em *EditManager) GoToStartOfFile()  {}
+func (em *EditManager) GoToEndOfFile()    {}
+func (em *EditManager) GoToNextWord()     {}
+func (em *EditManager) GoToPreviousWord() {}
+func (em *EditManager) DeleteWord()       {}
+func (em *EditManager) DeleteLine()       {}
+func (em *EditManager) GoForwardChar()    {}
+func (em *EditManager) GoBackwardChar()   {}
+func (em *EditManager) GoToNextLine()     {}
+func (em *EditManager) GoToPreviousLine() {}
