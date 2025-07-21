@@ -1,0 +1,3 @@
+/* every color code from every ui element will be stored here
+so it will be easer to change the color scheme of the editor
+and add a theme managfer in the future */

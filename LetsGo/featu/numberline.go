@@ -1,0 +1,6 @@
+/* a number line style bar which will be the same as for example in vscode
+   it will be used to show the line numbers of the text area
+   and it will be integrated with the text area
+   so when the user scrolls the text area the number line will scroll too
+   and it will be used to show the current line number of the cursor position
+*/

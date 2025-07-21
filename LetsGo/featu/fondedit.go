@@ -1,0 +1,2 @@
+/* a simple way to change the font size of the editor
+ */
