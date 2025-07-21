@@ -5,6 +5,7 @@ package main
 
 import (
 	"fmt"
+	"letsgo/ui"
 )
 
 // EditorState holds the entire application state
@@ -58,14 +59,8 @@ func main() {
 		UI:           UIState{},
 	}
 
-	// Placeholder: Initialize UI, load keybindings, etc.
-	fmt.Println("Editor initialized. Ready to enter main event loop.")
-
 	_ = state // Avoid unused variable error; will be used in future implementations
 
-	// Main event loop (to be implemented)
-	for {
-		// Handle input, update state, render UI
-		break // Placeholder: remove when implementing event loop
-	}
+	// Launch the main UI
+	ui.NewMainUI().Run()
 }

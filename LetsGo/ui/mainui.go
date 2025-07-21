@@ -13,51 +13,99 @@ and allow the user to add or remove buttons and remove the toolbar if they want.
 
 package ui
 
+import (
+	"fyne.io/fyne/v2"
+	"fyne.io/fyne/v2/app"
+	"fyne.io/fyne/v2/container"
+	"fyne.io/fyne/v2/theme"
+	"fyne.io/fyne/v2/widget"
+)
+
 // MainUI is the main UI controller for the editor
 // It manages the canvas and all UI elements
 //
 type MainUI struct {
-	Canvas    *Canvas
-	MenuBar   MenuBar
-	EditBar   EditBar
-	Toolbar   Toolbar
-	StatusBar StatusBar
-	TextArea  TextArea
+	App       fyne.App
+	Window    fyne.Window
+	MenuBar   *fyne.MainMenu
+	Toolbar   *widget.Toolbar
+	StatusBar *widget.Label
+	TextArea  *widget.Entry
 }
 
-// MenuBar represents the file operations menu
-//
-type MenuBar struct {
-	// Placeholder for menu items
+// NewMainUI creates and initializes the main UI
+func NewMainUI() *MainUI {
+	a := app.New()
+	w := a.NewWindow("LetsGo Editor")
+
+	// Menu bar
+	fileMenu := fyne.NewMenu("File",
+		fyne.NewMenuItem("New", nil),
+		fyne.NewMenuItem("Open", nil),
+		fyne.NewMenuItem("Save", nil),
+		fyne.NewMenuItem("Save As", nil),
+		fyne.NewMenuItem("Close", nil),
+		fyne.NewMenuItemSeparator(),
+		fyne.NewMenuItem("Exit", func() { a.Quit() }),
+	)
+	editMenu := fyne.NewMenu("Edit",
+		fyne.NewMenuItem("Undo", nil),
+		fyne.NewMenuItem("Redo", nil),
+		fyne.NewMenuItemSeparator(),
+		fyne.NewMenuItem("Cut", nil),
+		fyne.NewMenuItem("Copy", nil),
+		fyne.NewMenuItem("Paste", nil),
+		fyne.NewMenuItem("Select All", nil),
+	)
+	mainMenu := fyne.NewMainMenu(fileMenu, editMenu)
+	w.SetMainMenu(mainMenu)
+
+	// Toolbar
+	toolbar := widget.NewToolbar(
+		widget.NewToolbarAction(theme.DocumentCreateIcon(), func() {}),
+		widget.NewToolbarAction(theme.FolderOpenIcon(), func() {}),
+		widget.NewToolbarAction(theme.DocumentSaveIcon(), func() {}),
+		widget.NewToolbarSeparator(),
+		widget.NewToolbarAction(theme.ContentUndoIcon(), func() {}),
+		widget.NewToolbarAction(theme.ContentRedoIcon(), func() {}),
+		widget.NewToolbarSeparator(),
+		widget.NewToolbarAction(theme.ContentCutIcon(), func() {}),
+		widget.NewToolbarAction(theme.ContentCopyIcon(), func() {}),
+		widget.NewToolbarAction(theme.ContentPasteIcon(), func() {}),
+		widget.NewToolbarSeparator(),
+		widget.NewToolbarAction(theme.SearchIcon(), func() {}),
+	)
+
+	// Status bar
+	statusBar := widget.NewLabel("Ready | Line: 1, Col: 1")
+
+	// Text area
+	textArea := widget.NewMultiLineEntry()
+	textArea.SetPlaceHolder("Start typing...")
+
+	// Layout
+	content := container.NewBorder(
+		container.NewVBox(toolbar),   // top
+		nil,                          // right
+		nil,                          // left
+		container.NewVBox(statusBar), // bottom
+		textArea,                     // center
+	)
+
+	w.SetContent(content)
+	w.Resize(fyne.NewSize(800, 600))
+
+	return &MainUI{
+		App:       a,
+		Window:    w,
+		MenuBar:   mainMenu,
+		Toolbar:   toolbar,
+		StatusBar: statusBar,
+		TextArea:  textArea,
+	}
 }
 
-// EditBar represents the edit operations menu
-//
-type EditBar struct {
-	// Placeholder for edit menu items
-}
-
-// Toolbar represents the customizable toolbar
-//
-type Toolbar struct {
-	// Placeholder for toolbar buttons
-}
-
-// StatusBar shows file name, cursor position, etc.
-//
-type StatusBar struct {
-	// Placeholder for status info
-}
-
-// TextArea is the main text editing area, with numberline integrated
-//
-type TextArea struct {
-	// Placeholder for text content and numberline
-}
-
-// Render draws the entire UI using the canvas
-func (ui *MainUI) Render() {
-	// Render all UI elements on the canvas
-	ui.Canvas.Render()
-	// Placeholder: Render menu bar, toolbar, status bar, text area, etc.
+// Run starts the main UI event loop
+func (ui *MainUI) Run() {
+	ui.Window.ShowAndRun()
 }
