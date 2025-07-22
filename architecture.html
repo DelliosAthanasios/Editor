@@ -1,0 +1,834 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title> Editor Complete Architecture</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+            color: #333;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 20px;
+            padding: 30px;
+            box-shadow: 0 25px 50px rgba(0,0,0,0.15);
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 40px;
+        }
+
+        .main-title {
+            font-size: 3em;
+            font-weight: 800;
+            background: linear-gradient(45deg, #667eea, #764ba2);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: 10px;
+        }
+
+        .subtitle {
+            font-size: 1.3em;
+            color: #6c757d;
+            font-weight: 300;
+            margin-bottom: 20px;
+        }
+
+        .architecture-layers {
+            display: flex;
+            flex-direction: column;
+            gap: 40px;
+        }
+
+        .layer {
+            background: linear-gradient(135deg, #f8f9fa, #e9ecef);
+            border-radius: 15px;
+            padding: 30px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.08);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .layer::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 5px;
+            background: var(--layer-color);
+            border-radius: 15px 15px 0 0;
+        }
+
+        .layer-title {
+            font-size: 1.8em;
+            font-weight: 700;
+            color: #2c3e50;
+            margin-bottom: 25px;
+            text-align: center;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+        }
+
+        .components-grid {
+            display: grid;
+            gap: 20px;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+        }
+
+        .component {
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            border: 2px solid #e9ecef;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.05);
+            transition: all 0.3s ease;
+            position: relative;
+        }
+
+        .component::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 3px;
+            background: var(--component-color);
+            border-radius: 12px 12px 0 0;
+        }
+
+        .component:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+        }
+
+        .component-title {
+            font-size: 1.2em;
+            font-weight: 600;
+            color: #495057;
+            margin-bottom: 15px;
+            text-align: center;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .function-list {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .function {
+            background: #f8f9fa;
+            padding: 10px 15px;
+            border-radius: 8px;
+            font-size: 0.9em;
+            font-weight: 500;
+            color: #495057;
+            border-left: 3px solid var(--component-color);
+            transition: all 0.2s ease;
+        }
+
+        .function:hover {
+            background: #e9ecef;
+            transform: translateX(3px);
+        }
+
+        .data-flow {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin: 15px 0;
+            font-size: 0.85em;
+            color: #6c757d;
+            font-style: italic;
+        }
+
+        .arrow {
+            flex: 1;
+            height: 2px;
+            background: linear-gradient(90deg, var(--component-color), var(--layer-color));
+            position: relative;
+            margin: 0 10px;
+        }
+
+        .arrow::after {
+            content: '';
+            position: absolute;
+            right: -6px;
+            top: -3px;
+            width: 0;
+            height: 0;
+            border-left: 8px solid var(--layer-color);
+            border-top: 4px solid transparent;
+            border-bottom: 4px solid transparent;
+        }
+
+        .connections {
+            position: relative;
+            margin: 20px 0;
+            height: 60px;
+        }
+
+        .connection-line {
+            position: absolute;
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            z-index: 10;
+        }
+
+        .vertical-line {
+            width: 3px;
+            border-radius: 2px;
+        }
+
+        .horizontal-line {
+            height: 3px;
+            border-radius: 2px;
+        }
+
+        .connection-dot {
+            position: absolute;
+            width: 8px;
+            height: 8px;
+            background: #764ba2;
+            border-radius: 50%;
+            border: 2px solid white;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+            z-index: 15;
+        }
+
+        .connection-label {
+            position: absolute;
+            background: white;
+            padding: 4px 8px;
+            border-radius: 12px;
+            font-size: 0.75em;
+            font-weight: 600;
+            color: #495057;
+            border: 1px solid #dee2e6;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            white-space: nowrap;
+            z-index: 20;
+        }
+
+        .layer-connections {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            margin: 30px 0;
+            position: relative;
+        }
+
+        .layer-arrow {
+            width: 60px;
+            height: 4px;
+            background: linear-gradient(90deg, #667eea, #764ba2);
+            position: relative;
+            border-radius: 2px;
+        }
+
+        .layer-arrow::after {
+            content: '';
+            position: absolute;
+            right: -8px;
+            top: -6px;
+            width: 0;
+            height: 0;
+            border-left: 16px solid #764ba2;
+            border-top: 8px solid transparent;
+            border-bottom: 8px solid transparent;
+        }
+
+        .layer-flow-label {
+            background: white;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 0.9em;
+            font-weight: 600;
+            color: #495057;
+            border: 2px solid #764ba2;
+            margin: 0 20px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+        }
+
+        .component-connections {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin: 20px 0;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 12px;
+            border-left: 4px solid var(--layer-color);
+        }
+
+        .connection-item {
+            display: flex;
+            align-items: center;
+            background: white;
+            padding: 12px;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+            font-size: 0.85em;
+        }
+
+        .connection-from {
+            color: #e74c3c;
+            font-weight: 600;
+        }
+
+        .connection-to {
+            color: #2ecc71;
+            font-weight: 600;
+        }
+
+        .connection-arrow-small {
+            margin: 0 8px;
+            color: #6c757d;
+        }
+
+        /* Layer specific colors */
+        .ui-layer {
+            --layer-color: #e74c3c;
+        }
+
+        .ui-layer .component:nth-child(2) { --component-color: #e74c3c; }
+        .ui-layer .component:nth-child(3) { --component-color: #3498db; }
+        .ui-layer .component:nth-child(4) { --component-color: #f39c12; }
+        .ui-layer .component:nth-child(5) { --component-color: #2ecc71; }
+        .ui-layer .component:nth-child(6) { --component-color: #1abc9c; }
+        .ui-layer .component:nth-child(7) { --component-color: #9b59b6; }
+
+        .core-layer {
+            --layer-color: #2ecc71;
+        }
+
+        .core-layer .component:nth-child(2) { --component-color: #e67e22; }
+        .core-layer .component:nth-child(3) { --component-color: #2ecc71; }
+        .core-layer .component:nth-child(4) { --component-color: #e74c3c; }
+        .core-layer .component:nth-child(5) { --component-color: #3498db; }
+        .core-layer .component:nth-child(6) { --component-color: #9b59b6; }
+        .core-layer .component:nth-child(7) { --component-color: #1abc9c; }
+        .core-layer .component:nth-child(8) { --component-color: #f39c12; }
+        .core-layer .component:nth-child(9) { --component-color: #34495e; }
+
+        .extension-layer {
+            --layer-color: #9b59b6;
+        }
+
+        .extension-layer .component:nth-child(2) { --component-color: #9b59b6; }
+        .extension-layer .component:nth-child(3) { --component-color: #e74c3c; }
+        .extension-layer .component:nth-child(4) { --component-color: #3498db; }
+        .extension-layer .component:nth-child(5) { --component-color: #f39c12; }
+        .extension-layer .component:nth-child(6) { --component-color: #2ecc71; }
+
+        .specs-section {
+            background: #f8f9fa;
+            border-radius: 12px;
+            padding: 20px;
+            margin-top: 20px;
+        }
+
+        .specs-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 15px;
+            margin-bottom: 15px;
+        }
+
+        .spec-item {
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            border-left: 4px solid var(--component-color);
+            box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+        }
+
+        .spec-title {
+            font-weight: 600;
+            color: #495057;
+            margin-bottom: 8px;
+        }
+
+        .spec-details {
+            font-size: 0.85em;
+            color: #6c757d;
+            line-height: 1.4;
+        }
+
+        @media (max-width: 768px) {
+            .main-title {
+                font-size: 2.2em;
+            }
+            
+            .components-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .container {
+                padding: 20px;
+                margin: 10px;
+            }
+            
+            .specs-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1 class="main-title">Editor</h1>
+            <p class="subtitle">Complete System Architecture</p>
+        </div>
+
+        <div class="architecture-layers">
+            <!-- UI Layer -->
+            <div class="layer ui-layer">
+                <h2 class="layer-title">User Interface Layer</h2>
+                <div class="components-grid">
+                    <div class="component">
+                        <h3 class="component-title">View Manager</h3>
+                        <div class="function-list">
+                            <div class="function">Render_Frame</div>
+                            <div class="function">Split_Window</div>
+                            <div class="function">Redraw_Buffer_Area</div>
+                            <div class="function">Highlight_Syntax</div>
+                        </div>
+                        <div class="data-flow">
+                            <span>Display Output</span>
+                            <div class="arrow"></div>
+                        </div>
+                    </div>
+
+                    <div class="component">
+                        <h3 class="component-title">Input Controller</h3>
+                        <div class="function-list">
+                            <div class="function">Capture_Input_Event</div>
+                            <div class="function">Interpret_Keybinding</div>
+                            <div class="function">Pass_To_Dispatcher</div>
+                        </div>
+                        <div class="data-flow">
+                            <span>Raw Events</span>
+                            <div class="arrow"></div>
+                            <span>Structured Commands</span>
+                        </div>
+                    </div>
+
+                    <div class="component">
+                        <h3 class="component-title">Command Dispatcher</h3>
+                        <div class="function-list">
+                            <div class="function">Lookup_Command</div>
+                            <div class="function">Execute_Command</div>
+                            <div class="function">Support_Macros_Repeat</div>
+                        </div>
+                        <div class="data-flow">
+                            <span>Commands</span>
+                            <div class="arrow"></div>
+                            <span>Function Triggers</span>
+                        </div>
+                    </div>
+
+                    <div class="component">
+                        <h3 class="component-title">Buffer Manager</h3>
+                        <div class="function-list">
+                            <div class="function">Create_Buffer</div>
+                            <div class="function">Modify_Text_Region</div>
+                            <div class="function">Track_Undo_History</div>
+                            <div class="function">Save_To_File</div>
+                        </div>
+                        <div class="data-flow">
+                            <span>Editing Operations</span>
+                            <div class="arrow"></div>
+                            <span>Buffer Content</span>
+                        </div>
+                    </div>
+
+                    <div class="component">
+                        <h3 class="component-title">Mode Engine</h3>
+                        <div class="function-list">
+                            <div class="function">Detect_Major_Mode</div>
+                            <div class="function">Apply_Minor_Mode</div>
+                            <div class="function">Load_Mode_Scripts</div>
+                        </div>
+                        <div class="data-flow">
+                            <span>Buffer Content</span>
+                            <div class="arrow"></div>
+                            <span>Mode Behavior</span>
+                        </div>
+                    </div>
+
+                    <div class="component">
+                        <h3 class="component-title">MiniBuffer Console</h3>
+                        <div class="function-list">
+                            <div class="function">Read_Input</div>
+                            <div class="function">Provide_Completion</div>
+                            <div class="function">Echo_Results</div>
+                        </div>
+                        <div class="data-flow">
+                            <span>User Input</span>
+                            <div class="arrow"></div>
+                            <span>Command Results</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="component-connections">
+                    <div class="connection-item">
+                        <span class="connection-from">Input Controller</span>
+                        <span class="connection-arrow-small">→</span>
+                        <span class="connection-to">Command Dispatcher</span>
+                    </div>
+                    <div class="connection-item">
+                        <span class="connection-from">Command Dispatcher</span>
+                        <span class="connection-arrow-small">→</span>
+                        <span class="connection-to">Buffer Manager</span>
+                    </div>
+                    <div class="connection-item">
+                        <span class="connection-from">Buffer Manager</span>
+                        <span class="connection-arrow-small">→</span>
+                        <span class="connection-to">View Manager</span>
+                    </div>
+                    <div class="connection-item">
+                        <span class="connection-from">Buffer Manager</span>
+                        <span class="connection-arrow-small">→</span>
+                        <span class="connection-to">Mode Engine</span>
+                    </div>
+                    <div class="connection-item">
+                        <span class="connection-from">Mode Engine</span>
+                        <span class="connection-arrow-small">→</span>
+                        <span class="connection-to">View Manager</span>
+                    </div>
+                    <div class="connection-item">
+                        <span class="connection-from">All Components</span>
+                        <span class="connection-arrow-small">→</span>
+                        <span class="connection-to">MiniBuffer Console</span>
+                    </div>
+                </div>
+
+                <div class="component-connections">
+                    <div class="connection-item">
+                        <span class="connection-from">Buffer Manager (UI)</span>
+                        <span class="connection-arrow-small">→</span>
+                        <span class="connection-to">Buffer Manager Core</span>
+                    </div>
+                    <div class="connection-item">
+                        <span class="connection-from">View Manager</span>
+                        <span class="connection-arrow-small">→</span>
+                        <span class="connection-to">Rendering Engine</span>
+                    </div>
+                    <div class="connection-item">
+                        <span class="connection-from">File Operations</span>
+                        <span class="connection-arrow-small">→</span>
+                        <span class="connection-to">File I/O Manager</span>
+                    </div>
+                    <div class="connection-item">
+                        <span class="connection-from">Search Commands</span>
+                        <span class="connection-arrow-small">→</span>
+                        <span class="connection-to">Search & Navigation</span>
+                    </div>
+                    <div class="connection-item">
+                        <span class="connection-from">All Core Components</span>
+                        <span class="connection-arrow-small">→</span>
+                        <span class="connection-to">Memory & Concurrency</span>
+                    </div>
+                    <div class="connection-item">
+                        <span class="connection-from">System Events</span>
+                        <span class="connection-arrow-small">→</span>
+                        <span class="connection-to">API Layer</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="layer-connections">
+                <div class="layer-flow-label">System Calls & Core Operations</div>
+                <div class="layer-arrow"></div>
+            </div>
+
+            <div class="layer-connections">
+                <div class="layer-flow-label">User Events & Commands</div>
+                <div class="layer-arrow"></div>
+            </div>
+
+            <!-- Core Layer -->
+            <div class="layer core-layer">
+                <h2 class="layer-title">Core System Layer</h2>
+                <div class="components-grid">
+                    <div class="component">
+                        <h3 class="component-title">File I/O Manager</h3>
+                        <div class="function-list">
+                            <div class="function">File_Mapper</div>
+                            <div class="function">Chunk_Manager</div>
+                            <div class="function">File_Writer</div>
+                        </div>
+                        <div class="specs-section">
+                            <div class="spec-item">
+                                <div class="spec-title">Memory Mapping</div>
+                                <div class="spec-details">Memory maps, chunk loading, LRU cache</div>
+                            </div>
+                            <div class="spec-item">
+                                <div class="spec-title">Atomic Operations</div>
+                                <div class="spec-details">Atomic saves, buffered writes</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="component">
+                        <h3 class="component-title">Buffer Manager Core</h3>
+                        <div class="function-list">
+                            <div class="function">Buffer_Storage</div>
+                            <div class="function">Undo_Manager</div>
+                            <div class="function">Buffer_API</div>
+                        </div>
+                        <div class="specs-section">
+                            <div class="spec-item">
+                                <div class="spec-title">Data Structures</div>
+                                <div class="spec-details">Gap buffer, Rope, Piece table</div>
+                            </div>
+                            <div class="spec-item">
+                                <div class="spec-title">Change Tracking</div>
+                                <div class="spec-details">Undo/redo stack, position conversion</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="component">
+                        <h3 class="component-title">Rendering Engine</h3>
+                        <div class="function-list">
+                            <div class="function">Line_Layout</div>
+                            <div class="function">Syntax_Highlighter</div>
+                            <div class="function">Screen_Redrawer</div>
+                        </div>
+                        <div class="specs-section">
+                            <div class="spec-item">
+                                <div class="spec-title">Layout Features</div>
+                                <div class="spec-details">Wrapping, soft breaks, tokenizer</div>
+                            </div>
+                            <div class="spec-item">
+                                <div class="spec-title">Performance</div>
+                                <div class="spec-details">Incremental updates, damage tracking</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="component">
+                        <h3 class="component-title">Search & Navigation</h3>
+                        <div class="function-list">
+                            <div class="function">Index_Builder</div>
+                            <div class="function">Searcher</div>
+                            <div class="function">Navigator</div>
+                        </div>
+                        <div class="specs-section">
+                            <div class="spec-item">
+                                <div class="spec-title">Indexing</div>
+                                <div class="spec-details">Suffix tree, inverted index</div>
+                            </div>
+                            <div class="spec-item">
+                                <div class="spec-title">Search Features</div>
+                                <div class="spec-details">Streaming regex, bookmarks, symbol lookup</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="component">
+                        <h3 class="component-title">Memory & Concurrency</h3>
+                        <div class="function-list">
+                            <div class="function">Memory_Pool</div>
+                            <div class="function">Task_Queue</div>
+                            <div class="function">Lock_Manager</div>
+                        </div>
+                        <div class="specs-section">
+                            <div class="spec-item">
+                                <div class="spec-title">Optimization</div>
+                                <div class="spec-details">Custom allocator, background jobs</div>
+                            </div>
+                            <div class="spec-item">
+                                <div class="spec-title">Threading</div>
+                                <div class="spec-details">Lightweight locks, safe concurrency</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="component">
+                        <h3 class="component-title">API Layer</h3>
+                        <div class="function-list">
+                            <div class="function">Core_API</div>
+                            <div class="function">Event_Notifier</div>
+                            <div class="function">Error_Handling</div>
+                        </div>
+                        <div class="specs-section">
+                            <div class="spec-item">
+                                <div class="spec-title">Interface</div>
+                                <div class="spec-details">Stable interface, hooks for changes</div>
+                            </div>
+                            <div class="spec-item">
+                                <div class="spec-title">Reliability</div>
+                                <div class="spec-details">Consistent error reporting</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="component">
+                        <h3 class="component-title">Data Flow</h3>
+                        <div class="function-list">
+                            <div class="function">File → Chunks → Buffer</div>
+                            <div class="function">Edits → Undo</div>
+                            <div class="function">Search → Highlights</div>
+                            <div class="function">Render → Screen</div>
+                        </div>
+                    </div>
+
+                    <div class="component">
+                        <h3 class="component-title">Performance Features</h3>
+                        <div class="function-list">
+                            <div class="function">Zero-copy operations</div>
+                            <div class="function">Lazy loading</div>
+                            <div class="function">Background indexing</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Extension Layer -->
+            <div class="layer extension-layer">
+                <h2 class="layer-title">Extension System Layer</h2>
+                <div class="components-grid">
+                    <div class="component">
+                        <h3 class="component-title">Script Manager</h3>
+                        <div class="function-list">
+                            <div class="function">Loader</div>
+                            <div class="function">Namespace</div>
+                        </div>
+                    </div>
+
+                    <div class="component">
+                        <h3 class="component-title">Command System</h3>
+                        <div class="function-list">
+                            <div class="function">Registry</div>
+                            <div class="function">Invoker</div>
+                        </div>
+                    </div>
+
+                    <div class="component">
+                        <h3 class="component-title">Keybinding System</h3>
+                        <div class="function-list">
+                            <div class="function">Storage</div>
+                            <div class="function">Updater</div>
+                        </div>
+                    </div>
+
+                    <div class="component">
+                        <h3 class="component-title">Hook System</h3>
+                        <div class="function-list">
+                            <div class="function">Registry</div>
+                            <div class="function">Executor</div>
+                        </div>
+                    </div>
+
+                    <div class="component">
+                        <h3 class="component-title">State Manager</h3>
+                        <div class="function-list">
+                            <div class="function">Variable_Store</div>
+                            <div class="function">Persistence</div>
+                        </div>
+                    </div>
+
+                    <div class="component">
+                        <h3 class="component-title">Extension Interface</h3>
+                        <div class="function-list">
+                            <div class="function">Load_User_Init</div>
+                            <div class="function">Define_New_Command</div>
+                            <div class="function">Hook_Into_Events</div>
+                        </div>
+                        <div class="data-flow">
+                            <span>User Scripts</span>
+                            <div class="arrow"></div>
+                            <span>New Commands/UI</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="component-connections">
+                    <div class="connection-item">
+                        <span class="connection-from">Command Dispatcher</span>
+                        <span class="connection-arrow-small">→</span>
+                        <span class="connection-to">Command System</span>
+                    </div>
+                    <div class="connection-item">
+                        <span class="connection-from">Input Controller</span>
+                        <span class="connection-arrow-small">→</span>
+                        <span class="connection-to">Keybinding System</span>
+                    </div>
+                    <div class="connection-item">
+                        <span class="connection-from">System Events</span>
+                        <span class="connection-arrow-small">→</span>
+                        <span class="connection-to">Hook System</span>
+                    </div>
+                    <div class="connection-item">
+                        <span class="connection-from">User Scripts</span>
+                        <span class="connection-arrow-small">→</span>
+                        <span class="connection-to">Script Manager</span>
+                    </div>
+                    <div class="connection-item">
+                        <span class="connection-from">Extension Interface</span>
+                        <span class="connection-arrow-small">→</span>
+                        <span class="connection-to">All UI Components</span>
+                    </div>
+                    <div class="connection-item">
+                        <span class="connection-from">Configuration</span>
+                        <span class="connection-arrow-small">→</span>
+                        <span class="connection-to">State Manager</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div style="margin-top: 40px; padding: 30px; background: linear-gradient(135deg, #f8f9fa, #e9ecef); border-radius: 15px;">
+            <h2 style="text-align: center; color: #2c3e50; margin-bottom: 25px; font-size: 1.5em;">System Data Flow</h2>
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 20px;">
+                <div style="background: white; padding: 20px; border-radius: 12px; border-left: 4px solid #e74c3c;">
+                    <h4 style="color: #e74c3c; margin-bottom: 10px;">Input Flow</h4>
+                    <div style="font-size: 0.9em; line-height: 1.6; color: #495057;">
+                        User Input → Input Controller → Command Dispatcher → Buffer Manager → File I/O → Core Systems
+                    </div>
+                </div>
+                <div style="background: white; padding: 20px; border-radius: 12px; border-left: 4px solid #2ecc71;">
+                    <h4 style="color: #2ecc71; margin-bottom: 10px;">Rendering Flow</h4>
+                    <div style="font-size: 0.9em; line-height: 1.6; color: #495057;">
+                        Buffer Content → Rendering Engine → Mode Engine → Syntax Highlighter → View Manager → Display
+                    </div>
+                </div>
+                <div style="background: white; padding: 20px; border-radius: 12px; border-left: 4px solid #9b59b6;">
+                    <h4 style="color: #9b59b6; margin-bottom: 10px;">Extension Flow</h4>
+                    <div style="font-size: 0.9em; line-height: 1.6; color: #495057;">
+                        User Scripts → Script Manager → Extension Interface → Hook System → Core Components
+                    </div>
+                </div>
+                <div style="background: white; padding: 20px; border-radius: 12px; border-left: 4px solid #f39c12;">
+                    <h4 style="color: #f39c12; margin-bottom: 10px;">File Operations</h4>
+                    <div style="font-size: 0.9em; line-height: 1.6; color: #495057;">
+                        File Commands → File I/O Manager → Memory Manager → Buffer Manager → View Updates
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>
