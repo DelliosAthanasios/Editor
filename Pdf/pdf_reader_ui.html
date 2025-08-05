@@ -1,10 +1,4 @@
-        // Page input handler with better validation
-        document.getElementById('pageInput').addEventListener('change', function() {
-            const pageNum = parseInt(this.value);
-            if (pageNum >= 1 && pageNum <= totalPages) {
-                currentPage = pageNum;
-                if (window.pythonInterface) {
-                    window.pythonInterface.goTo<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -12,6 +6,7 @@
     <title>PDF Reader</title>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <style>
+        /* --- BEGIN: Main Style --- */
         * {
             margin: 0;
             padding: 0;
@@ -96,6 +91,7 @@
             flex: 1;
             display: flex;
             overflow: hidden;
+            position: relative;
         }
 
         .sidebar {
@@ -106,6 +102,8 @@
             display: flex;
             flex-direction: column;
             transition: all 0.3s ease;
+            z-index: 100;
+            position: relative;
         }
 
         body.dark-mode .sidebar {
@@ -114,7 +112,11 @@
         }
 
         .sidebar.collapsed {
-            transform: translateX(-280px);
+            width: 0 !important;
+            min-width: 0 !important;
+            padding: 0 !important;
+            border-right: none !important;
+            overflow: hidden !important;
         }
 
         .sidebar-header {
@@ -238,6 +240,7 @@
             display: flex;
             flex-direction: column;
             background: #f8f9fa;
+            position: relative;
         }
 
         .toolbar {
@@ -397,6 +400,7 @@
             align-items: flex-start;
             padding: 2rem;
             transition: all 0.3s ease;
+            min-width: 0;
         }
 
         body.dark-mode .pdf-viewer {
@@ -469,7 +473,7 @@
             display: flex;
             align-items: center;
             justify-content: center;
-            z-index: 10;
+            z-index: 101;
             color: white;
             box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4);
         }
@@ -555,6 +559,29 @@
             padding: 0 2px;
         }
 
+        /* --- Fix for sidebar collapsed, fill left space with pdf-viewer --- */
+        .main-container .sidebar.collapsed + .viewer-container {
+            margin-left: 0 !important;
+        }
+        .main-container .sidebar {
+            margin-right: 0;
+        }
+        .main-container .sidebar.collapsed {
+            margin-right: -1px;
+        }
+
+        /* When sidebar is collapsed, pdf-viewer container stretches full width */
+        .main-container .sidebar.collapsed ~ .viewer-container {
+            width: 100vw;
+            left: 0;
+        }
+
+        /* Extra: Ensure viewer-container uses all space when sidebar hidden */
+        .main-container .viewer-container {
+            flex-grow: 1;
+            min-width: 0;
+        }
+
         @media (max-width: 768px) {
             .sidebar {
                 position: absolute;
@@ -583,6 +610,7 @@
                 padding: 1rem;
             }
         }
+        /* --- END: Main Style --- */
     </style>
 </head>
 <body>
@@ -647,7 +675,7 @@
         </div>
 
         <div class="viewer-container">
-            <button class="toggle-sidebar" onclick="toggleSidebar()">
+            <button class="toggle-sidebar" onclick="toggleSidebar()" id="toggleSidebarBtn">
                 <i class="fas fa-bars"></i>
             </button>
             
@@ -749,16 +777,16 @@
         // UI Functions
         function toggleSidebar() {
             const sidebar = document.getElementById('sidebar');
-            const toggleBtn = document.querySelector('.toggle-sidebar i');
+            const toggleBtnIcon = document.querySelector('#toggleSidebarBtn i');
             
             sidebarCollapsed = !sidebarCollapsed;
             
             if (sidebarCollapsed) {
                 sidebar.classList.add('collapsed');
-                toggleBtn.className = 'fas fa-bars';
+                toggleBtnIcon.className = 'fas fa-bars';
             } else {
                 sidebar.classList.remove('collapsed');
-                toggleBtn.className = 'fas fa-times';
+                toggleBtnIcon.className = 'fas fa-times';
             }
         }
 
@@ -789,7 +817,6 @@
             if (currentPage > 1) {
                 currentPage--;
                 document.getElementById('pageInput').value = currentPage;
-                // Your Python script will handle the actual page change
                 window.pythonInterface?.goToPage(currentPage);
             }
         }
@@ -798,7 +825,6 @@
             if (currentPage < totalPages) {
                 currentPage++;
                 document.getElementById('pageInput').value = currentPage;
-                // Your Python script will handle the actual page change
                 window.pythonInterface?.goToPage(currentPage);
             }
         }
@@ -815,44 +841,39 @@
 
         function updateZoom() {
             document.getElementById('zoomInput').value = currentZoom + '%';
-            // Your Python script will handle the actual zoom
             window.pythonInterface?.setZoom(currentZoom);
         }
 
         function fitToWidth() {
-            // Your Python script will calculate and set appropriate zoom
             window.pythonInterface?.fitToWidth();
         }
 
         function rotatePage() {
             currentRotation = (currentRotation + 90) % 360;
-            // Your Python script will handle the rotation
             window.pythonInterface?.rotatePage(currentRotation);
         }
 
         function openFile() {
-            // Your Python script will handle file opening
             window.pythonInterface?.openFile();
         }
 
         function downloadPDF() {
-            // Your Python script will handle download
             window.pythonInterface?.downloadPDF();
         }
 
         function printPDF() {
-            // Your Python script will handle printing
             window.pythonInterface?.printPDF();
         }
 
-        // Page input handler with better validation
+        // Remove page input handler (validation will be handled in Python)
+        // (Was: document.getElementById('pageInput').addEventListener('change', ...) )
+
+        // --- NEW PAGE INPUT HANDLER (just update and call goToPage if valid) ---
         document.getElementById('pageInput').addEventListener('change', function() {
             const pageNum = parseInt(this.value);
             if (pageNum >= 1 && pageNum <= totalPages) {
                 currentPage = pageNum;
-                if (window.pythonInterface) {
-                    window.pythonInterface.goToPage(currentPage);
-                }
+                window.pythonInterface?.goToPage(currentPage);
                 updateActiveThumbnail();
             } else {
                 this.value = currentPage;
@@ -868,9 +889,7 @@
             clearTimeout(searchTimeout);
             searchTimeout = setTimeout(() => {
                 if (query.length > 2) {
-                    if (window.pythonInterface) {
-                        window.pythonInterface.search(query);
-                    }
+                    window.pythonInterface?.search(query);
                 } else {
                     document.getElementById('searchResults').innerHTML = '';
                 }
@@ -885,7 +904,6 @@
         }
 
         function showNotification(message, type = 'info') {
-            // Create notification element
             const notification = document.createElement('div');
             notification.className = `notification ${type}`;
             notification.textContent = message;
@@ -905,12 +923,10 @@
             
             document.body.appendChild(notification);
             
-            // Animate in
             requestAnimationFrame(() => {
                 notification.style.transform = 'translateX(0)';
             });
             
-            // Remove after 3 seconds
             setTimeout(() => {
                 notification.style.transform = 'translateX(400px)';
                 setTimeout(() => {
@@ -925,7 +941,6 @@
         document.addEventListener('DOMContentLoaded', function() {
             initializeTheme();
             
-            // Mobile responsiveness
             if (window.innerWidth <= 768) {
                 sidebarCollapsed = true;
                 document.getElementById('sidebar').classList.add('collapsed');
@@ -970,9 +985,7 @@
                     div.onclick = () => {
                         currentPage = index + 1;
                         document.getElementById('pageInput').value = currentPage;
-                        if (window.pythonInterface) {
-                            window.pythonInterface.goToPage(currentPage);
-                        }
+                        window.pythonInterface?.goToPage(currentPage);
                         updateActiveThumbnail();
                     };
                     
@@ -998,101 +1011,39 @@
                     `;
                     
                     div.onclick = () => {
-                        const pageNum = item.page || 1;
-                        currentPage = pageNum;
+                        currentPage = item.page || 1;
                         document.getElementById('pageInput').value = currentPage;
-                        if (window.pythonInterface) {
-                            window.pythonInterface.goToPage(currentPage);
-                        }
+                        window.pythonInterface?.goToPage(currentPage);
                         updateActiveThumbnail();
                     };
                     
                     container.appendChild(div);
                 });
             },
-            
             updateSearchResults: function(results) {
                 const container = document.getElementById('searchResults');
-                
                 if (!results || results.length === 0) {
-                    container.innerHTML = '<div style="text-align: center; color: #666; padding: 1rem;">No results found</div>';
+                    container.innerHTML = '<div style="color: #666; padding: 1rem;">No results found.</div>';
                     return;
                 }
-                
                 container.innerHTML = '';
                 results.forEach(result => {
                     const div = document.createElement('div');
                     div.className = 'search-result';
                     div.innerHTML = `
-                        <div class="search-result-text">${result.text || 'No preview available'}</div>
-                        <div class="search-result-page">Page ${result.page || 1}</div>
+                        <div class="search-result-text">${result.text}</div>
+                        <div class="search-result-page">Page ${result.page}</div>
                     `;
-                    
                     div.onclick = () => {
-                        const pageNum = result.page || 1;
-                        currentPage = pageNum;
+                        currentPage = result.page;
                         document.getElementById('pageInput').value = currentPage;
-                        if (window.pythonInterface) {
-                            window.pythonInterface.goToPage(currentPage);
-                        }
+                        window.pythonInterface?.goToPage(currentPage);
                         updateActiveThumbnail();
                     };
-                    
                     container.appendChild(div);
                 });
-            },
-            
-            updatePDFViewer: function(pageImage) {
-                const viewer = document.getElementById('pdfViewer');
-                if (pageImage) {
-                    viewer.innerHTML = `
-                        <div class="pdf-page">
-                            <img src="${pageImage}" alt="PDF Page" 
-                                 style="width: 100%; height: auto; display: block;"
-                                 onerror="this.parentElement.innerHTML='<div style=\\'padding:2rem;text-align:center;color:#666;\\'>Error loading page</div>'">
-                        </div>
-                    `;
-                } else {
-                    this.showLoading('No page to display');
-                }
-            },
-            
-            showLoading: function(message = 'Loading...') {
-                const viewer = document.getElementById('pdfViewer');
-                viewer.innerHTML = `
-                    <div class="loading-placeholder">
-                        <div>
-                            <i class="fas fa-spinner fa-spin" style="font-size: 3rem; margin-bottom: 1rem; opacity: 0.3;"></i>
-                            <div>${message}</div>
-                        </div>
-                    </div>
-                `;
-            },
-            
-            showError: function(message = 'An error occurred') {
-                const viewer = document.getElementById('pdfViewer');
-                viewer.innerHTML = `
-                    <div class="loading-placeholder" style="color: #ff6b6b;">
-                        <div>
-                            <i class="fas fa-exclamation-triangle" style="font-size: 3rem; margin-bottom: 1rem; opacity: 0.5;"></i>
-                            <div>${message}</div>
-                        </div>
-                    </div>
-                `;
-                showNotification(message, 'error');
-            },
-            
-            updateZoom: function(zoomLevel) {
-                currentZoom = Math.max(25, Math.min(300, zoomLevel));
-                document.getElementById('zoomInput').value = currentZoom + '%';
             }
         };
-
-        // Mobile responsiveness
-        if (window.innerWidth <= 768) {
-            sidebarCollapsed = true;
-            document.getElementById('sidebar').classList.add('collapsed');
-        }
     </script>
 </body>
 </html>
