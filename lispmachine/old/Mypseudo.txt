@@ -1,0 +1,52 @@
+import subprocess
+import os
+
+'''
+pseudocode
+Part 1 building the Dockerfile
+Search in Folder of the script
+find Dockerfile
+if Dockerfile exists
+Run in cmd
+docker build -t lispmachine .
+when process ended
+run in cmd
+docker run --name lispmachine -it lispmachine
+else:
+print (" Critical Error Dockerfile does not exist")
+
+Part 2 Creating the GUI
+Create a window
+Split in in half
+
+Add a Menu bar
+One will say Machines and it will list the names of the machine running
+The other will sat Mount
+There are the option to mound disks and folders
+
+Add other usefull menu options
+
+The one half will be a simple text editor
+
+The other will be the window connected with the container
+
+Part 3 mounting the Folder
+
+When pressing Mananage mounting folders
+
+pop a menu with the running machines
+
+after user chooses machine
+
+pop which folder do you want your machine to acess
+
+open system file explorer to chose
+
+have a check box when there is a read only it can be enabled or disabled
+
+Do the changes to docker-compose.yml and add the allowed files
+
+
+Part 4
+Connect selected machine which will be displayd in the other half of the machine
+''' 

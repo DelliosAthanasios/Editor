@@ -1,0 +1,6 @@
+services:
+  lispmachine:
+    container_name: lispmachine
+    image: lispmachine
+    volumes:
+    - C:/Users/nasos/Desktop/doc/lispmachine/old:/parentosfiles

@@ -1,0 +1,1049 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PDF Reader</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        /* --- BEGIN: Main Style --- */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            transition: all 0.3s ease;
+        }
+
+        body.dark-mode {
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+        }
+
+        .header {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(20px);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+            padding: 1rem 2rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            transition: all 0.3s ease;
+        }
+
+        body.dark-mode .header {
+            background: rgba(0, 0, 0, 0.3);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            color: white;
+            font-size: 1.5rem;
+            font-weight: 600;
+        }
+
+        .theme-toggle {
+            background: rgba(255, 255, 255, 0.2);
+            border: none;
+            color: white;
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-left: 1rem;
+        }
+
+        .theme-toggle:hover {
+            background: rgba(255, 255, 255, 0.3);
+            transform: scale(1.1);
+        }
+
+        .file-info {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            color: white;
+        }
+
+        .file-name {
+            font-weight: 500;
+            max-width: 300px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .main-container {
+            flex: 1;
+            display: flex;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .sidebar {
+            width: 300px;
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(20px);
+            border-right: 1px solid rgba(0, 0, 0, 0.1);
+            display: flex;
+            flex-direction: column;
+            transition: all 0.3s ease;
+            z-index: 100;
+            position: relative;
+        }
+
+        body.dark-mode .sidebar {
+            background: rgba(30, 30, 60, 0.95);
+            border-right: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .sidebar.collapsed {
+            width: 0 !important;
+            min-width: 0 !important;
+            padding: 0 !important;
+            border-right: none !important;
+            overflow: hidden !important;
+        }
+
+        .sidebar-header {
+            padding: 1.5rem;
+            border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .sidebar-tabs {
+            display: flex;
+            gap: 0.5rem;
+        }
+
+        .tab-btn {
+            padding: 0.75rem 1rem;
+            border: none;
+            background: transparent;
+            border-radius: 12px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-size: 0.9rem;
+            color: #666;
+            position: relative;
+        }
+
+        .tab-btn.active {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
+        }
+
+        .tab-btn:hover:not(.active) {
+            background: rgba(102, 126, 234, 0.1);
+            color: #667eea;
+            transform: translateY(-1px);
+        }
+
+        body.dark-mode .tab-btn {
+            color: #ccc;
+        }
+
+        body.dark-mode .tab-btn:hover:not(.active) {
+            background: rgba(139, 149, 245, 0.1);
+            color: #8b95f5;
+        }
+
+        .sidebar-content {
+            flex: 1;
+            overflow-y: auto;
+            padding: 1rem;
+        }
+
+        .thumbnails-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+            gap: 1rem;
+        }
+
+        .thumbnail {
+            aspect-ratio: 3/4;
+            background: #f8f9fa;
+            border: 2px solid transparent;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .thumbnail:hover {
+            border-color: #667eea;
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(102, 126, 234, 0.3);
+        }
+
+        .thumbnail.active {
+            border-color: #667eea;
+            background: rgba(102, 126, 234, 0.1);
+        }
+
+        .page-number {
+            position: absolute;
+            bottom: 0.5rem;
+            font-size: 0.8rem;
+            color: #666;
+            font-weight: 500;
+        }
+
+        .outline-item {
+            padding: 0.5rem;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            border-left: 3px solid transparent;
+        }
+
+        .outline-item:hover {
+            background: rgba(102, 126, 234, 0.1);
+            border-left-color: #667eea;
+        }
+
+        .outline-text {
+            font-size: 0.9rem;
+            color: #333;
+        }
+
+        .outline-page {
+            font-size: 0.8rem;
+            color: #666;
+            margin-top: 0.25rem;
+        }
+
+        .viewer-container {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            background: #f8f9fa;
+            position: relative;
+        }
+
+        .toolbar {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(20px);
+            padding: 1rem 2rem;
+            border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 1rem;
+            transition: all 0.3s ease;
+        }
+
+        body.dark-mode .toolbar {
+            background: rgba(30, 30, 60, 0.95);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .toolbar-section {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .btn {
+            padding: 0.75rem 1.25rem;
+            border: 2px solid transparent;
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+            border-radius: 12px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+            font-size: 0.9rem;
+            font-weight: 500;
+            text-decoration: none;
+            position: relative;
+            overflow: hidden;
+            min-height: 44px;
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
+        }
+
+        .btn::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+            transition: left 0.5s;
+        }
+
+        .btn:hover::before {
+            left: 100%;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn:active {
+            transform: translateY(0);
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.5);
+        }
+
+        .btn.secondary {
+            background: rgba(255, 255, 255, 0.1);
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            color: rgba(255, 255, 255, 0.9);
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+        }
+
+        .btn.secondary:hover {
+            background: rgba(255, 255, 255, 0.2);
+            border-color: rgba(255, 255, 255, 0.5);
+            color: white;
+        }
+
+        .btn.outline {
+            background: transparent;
+            border: 2px solid #667eea;
+            color: #667eea;
+            box-shadow: none;
+        }
+
+        .btn.outline:hover {
+            background: #667eea;
+            color: white;
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
+        }
+
+        .btn.icon-only {
+            width: 44px;
+            height: 44px;
+            padding: 0;
+            border-radius: 50%;
+        }
+
+        .btn.small {
+            padding: 0.5rem 1rem;
+            font-size: 0.8rem;
+            min-height: 36px;
+        }
+
+        body.dark-mode .btn.outline {
+            border-color: #8b95f5;
+            color: #8b95f5;
+        }
+
+        body.dark-mode .btn.outline:hover {
+            background: #8b95f5;
+            color: #1a1a2e;
+        }
+
+        .zoom-controls {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .zoom-input {
+            width: 80px;
+            padding: 0.5rem;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            text-align: center;
+            font-size: 0.9rem;
+        }
+
+        .page-controls {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .page-input {
+            width: 60px;
+            padding: 0.5rem;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            text-align: center;
+            font-size: 0.9rem;
+        }
+
+        .pdf-viewer {
+            flex: 1;
+            overflow: auto;
+            background: #e9ecef;
+            display: flex;
+            justify-content: center;
+            align-items: flex-start;
+            padding: 2rem;
+            transition: all 0.3s ease;
+            min-width: 0;
+        }
+
+        body.dark-mode .pdf-viewer {
+            background: #0f0f23;
+        }
+
+        body.dark-mode .outline-text,
+        body.dark-mode .search-result-text {
+            color: #e0e0e0;
+        }
+
+        body.dark-mode .outline-page,
+        body.dark-mode .search-result-page {
+            color: #999;
+        }
+
+        body.dark-mode .sidebar-header {
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        body.dark-mode .outline-item:hover,
+        body.dark-mode .search-result:hover {
+            background: rgba(139, 149, 245, 0.1);
+            border-left-color: #8b95f5;
+        }
+
+        .pdf-page {
+            background: white;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+            border-radius: 12px;
+            margin-bottom: 2rem;
+            overflow: hidden;
+            transition: all 0.3s ease;
+        }
+
+        .pdf-page:hover {
+            box-shadow: 0 12px 48px rgba(0, 0, 0, 0.15);
+        }
+
+        .loading-placeholder {
+            width: 600px;
+            height: 800px;
+            background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+            background-size: 200% 100%;
+            animation: loading 1.5s infinite;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #666;
+            font-size: 1.1rem;
+        }
+
+        @keyframes loading {
+            0% { background-position: 200% 0; }
+            100% { background-position: -200% 0; }
+        }
+
+        .toggle-sidebar {
+            position: absolute;
+            left: 20px;
+            top: 50%;
+            transform: translateY(-50%);
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            border: none;
+            width: 48px;
+            height: 48px;
+            border-radius: 50%;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 101;
+            color: white;
+            box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4);
+        }
+
+        .toggle-sidebar:hover {
+            transform: translateY(-50%) scale(1.1);
+            box-shadow: 0 8px 25px rgba(102, 126, 234, 0.5);
+        }
+
+        .toggle-sidebar:active {
+            transform: translateY(-50%) scale(0.95);
+        }
+
+        .search-container {
+            position: relative;
+            margin-bottom: 1rem;
+        }
+
+        .search-input {
+            width: 100%;
+            padding: 1rem;
+            border: 2px solid rgba(102, 126, 234, 0.3);
+            border-radius: 12px;
+            font-size: 0.9rem;
+            background: rgba(255, 255, 255, 0.95);
+            transition: all 0.3s ease;
+        }
+
+        .search-input:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+            transform: scale(1.02);
+        }
+
+        body.dark-mode .search-input {
+            background: rgba(30, 30, 60, 0.8);
+            border-color: rgba(139, 149, 245, 0.3);
+            color: white;
+        }
+
+        body.dark-mode .search-input::placeholder {
+            color: rgba(255, 255, 255, 0.6);
+        }
+
+        body.dark-mode .search-input:focus {
+            border-color: #8b95f5;
+            box-shadow: 0 0 0 3px rgba(139, 149, 245, 0.1);
+        }
+
+        .search-results {
+            margin-top: 1rem;
+        }
+
+        .search-result {
+            padding: 0.75rem;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            border-left: 3px solid transparent;
+            margin-bottom: 0.5rem;
+        }
+
+        .search-result:hover {
+            background: rgba(102, 126, 234, 0.1);
+            border-left-color: #667eea;
+        }
+
+        .search-result-text {
+            font-size: 0.9rem;
+            color: #333;
+            line-height: 1.4;
+        }
+
+        .search-result-page {
+            font-size: 0.8rem;
+            color: #666;
+            margin-top: 0.25rem;
+        }
+
+        .highlight {
+            background: #ffeb3b;
+            padding: 0 2px;
+        }
+
+        /* --- Fix for sidebar collapsed, fill left space with pdf-viewer --- */
+        .main-container .sidebar.collapsed + .viewer-container {
+            margin-left: 0 !important;
+        }
+        .main-container .sidebar {
+            margin-right: 0;
+        }
+        .main-container .sidebar.collapsed {
+            margin-right: -1px;
+        }
+
+        /* When sidebar is collapsed, pdf-viewer container stretches full width */
+        .main-container .sidebar.collapsed ~ .viewer-container {
+            width: 100vw;
+            left: 0;
+        }
+
+        /* Extra: Ensure viewer-container uses all space when sidebar hidden */
+        .main-container .viewer-container {
+            flex-grow: 1;
+            min-width: 0;
+        }
+
+        @media (max-width: 768px) {
+            .sidebar {
+                position: absolute;
+                left: 0;
+                top: 0;
+                height: 100%;
+                z-index: 100;
+                transform: translateX(-100%);
+            }
+
+            .sidebar.show {
+                transform: translateX(0);
+            }
+
+            .toolbar {
+                padding: 1rem;
+                flex-wrap: wrap;
+                gap: 0.5rem;
+            }
+
+            .toolbar-section {
+                gap: 0.5rem;
+            }
+
+            .pdf-viewer {
+                padding: 1rem;
+            }
+        }
+        /* --- END: Main Style --- */
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div class="logo">
+            <i class="fas fa-file-pdf"></i>
+            PDF Reader
+        </div>
+        <div class="file-info">
+            <span class="file-name" id="fileName">No document loaded</span>
+            <button class="btn secondary" onclick="openFile()">
+                <i class="fas fa-folder-open"></i>
+                Open File
+            </button>
+            <button class="theme-toggle" onclick="toggleTheme()" title="Toggle Dark Mode">
+                <i class="fas fa-moon" id="themeIcon"></i>
+            </button>
+        </div>
+    </div>
+
+    <div class="main-container">
+        <div class="sidebar" id="sidebar">
+            <div class="sidebar-header">
+                <div class="sidebar-tabs">
+                    <button class="tab-btn active" onclick="switchTab('thumbnails')">
+                        <i class="fas fa-th-large"></i>
+                    </button>
+                    <button class="tab-btn" onclick="switchTab('outline')">
+                        <i class="fas fa-list"></i>
+                    </button>
+                    <button class="tab-btn" onclick="switchTab('search')">
+                        <i class="fas fa-search"></i>
+                    </button>
+                </div>
+                <button class="btn outline" onclick="toggleSidebar()">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            
+            <div class="sidebar-content">
+                <div id="thumbnails-tab" class="tab-content">
+                    <div class="thumbnails-grid" id="thumbnailsGrid">
+                        <!-- Thumbnails will be populated here -->
+                    </div>
+                </div>
+                
+                <div id="outline-tab" class="tab-content" style="display: none;">
+                    <div id="outlineContainer">
+                        <!-- Outline will be populated here -->
+                    </div>
+                </div>
+                
+                <div id="search-tab" class="tab-content" style="display: none;">
+                    <div class="search-container">
+                        <input type="text" class="search-input" placeholder="Search in document..." id="searchInput">
+                    </div>
+                    <div class="search-results" id="searchResults">
+                        <!-- Search results will be populated here -->
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="viewer-container">
+            <button class="toggle-sidebar" onclick="toggleSidebar()" id="toggleSidebarBtn">
+                <i class="fas fa-bars"></i>
+            </button>
+            
+            <div class="toolbar">
+                <div class="toolbar-section">
+                    <div class="page-controls">
+                        <button class="btn icon-only" onclick="previousPage()" title="Previous Page">
+                            <i class="fas fa-chevron-left"></i>
+                        </button>
+                        <input type="number" class="page-input" id="pageInput" value="1" min="1">
+                        <span style="color: #666; margin: 0 0.5rem;">of <span id="totalPages">1</span></span>
+                        <button class="btn icon-only" onclick="nextPage()" title="Next Page">
+                            <i class="fas fa-chevron-right"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <div class="toolbar-section">
+                    <div class="zoom-controls">
+                        <button class="btn icon-only" onclick="zoomOut()" title="Zoom Out">
+                            <i class="fas fa-minus"></i>
+                        </button>
+                        <input type="text" class="zoom-input" id="zoomInput" value="100%" readonly>
+                        <button class="btn icon-only" onclick="zoomIn()" title="Zoom In">
+                            <i class="fas fa-plus"></i>
+                        </button>
+                        <button class="btn small outline" onclick="fitToWidth()">
+                            <i class="fas fa-arrows-alt-h"></i>
+                            Fit Width
+                        </button>
+                    </div>
+                </div>
+
+                <div class="toolbar-section">
+                    <button class="btn small outline" onclick="rotatePage()" title="Rotate Page">
+                        <i class="fas fa-redo"></i>
+                        Rotate
+                    </button>
+                    <button class="btn small" onclick="downloadPDF()" title="Download PDF">
+                        <i class="fas fa-download"></i>
+                        Download
+                    </button>
+                    <button class="btn small" onclick="printPDF()" title="Print PDF">
+                        <i class="fas fa-print"></i>
+                        Print
+                    </button>
+                </div>
+            </div>
+
+            <div class="pdf-viewer" id="pdfViewer">
+                <div class="loading-placeholder">
+                    <div>
+                        <i class="fas fa-file-pdf" style="font-size: 3rem; margin-bottom: 1rem; opacity: 0.3;"></i>
+                        <div>Load a PDF document to get started</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Global state
+        let currentPage = 1;
+        let totalPages = 1;
+        let currentZoom = 100;
+        let currentRotation = 0;
+        let sidebarCollapsed = false;
+        let activeTab = 'thumbnails';
+        let isDarkMode = false;
+
+        // Theme toggle function
+        function toggleTheme() {
+            isDarkMode = !isDarkMode;
+            const body = document.body;
+            const themeIcon = document.getElementById('themeIcon');
+            
+            if (isDarkMode) {
+                body.classList.add('dark-mode');
+                themeIcon.className = 'fas fa-sun';
+            } else {
+                body.classList.remove('dark-mode');
+                themeIcon.className = 'fas fa-moon';
+            }
+            
+            // Save theme preference
+            localStorage.setItem('darkMode', isDarkMode);
+        }
+
+        // Initialize theme from localStorage
+        function initializeTheme() {
+            const savedTheme = localStorage.getItem('darkMode');
+            if (savedTheme === 'true') {
+                isDarkMode = true;
+                document.body.classList.add('dark-mode');
+                document.getElementById('themeIcon').className = 'fas fa-sun';
+            }
+        }
+
+        // UI Functions
+        function toggleSidebar() {
+            const sidebar = document.getElementById('sidebar');
+            const toggleBtnIcon = document.querySelector('#toggleSidebarBtn i');
+            
+            sidebarCollapsed = !sidebarCollapsed;
+            
+            if (sidebarCollapsed) {
+                sidebar.classList.add('collapsed');
+                toggleBtnIcon.className = 'fas fa-bars';
+            } else {
+                sidebar.classList.remove('collapsed');
+                toggleBtnIcon.className = 'fas fa-times';
+            }
+        }
+
+        function switchTab(tabName) {
+            // Update active tab
+            document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+            
+            // Find the clicked button and make it active
+            const clickedBtn = event.target.closest('.tab-btn');
+            if (clickedBtn) {
+                clickedBtn.classList.add('active');
+            }
+            
+            // Show/hide tab content
+            document.querySelectorAll('.tab-content').forEach(content => {
+                content.style.display = 'none';
+            });
+            
+            const targetTab = document.getElementById(tabName + '-tab');
+            if (targetTab) {
+                targetTab.style.display = 'block';
+            }
+            
+            activeTab = tabName;
+        }
+
+        function previousPage() {
+            if (currentPage > 1) {
+                currentPage--;
+                document.getElementById('pageInput').value = currentPage;
+                window.pythonInterface?.goToPage(currentPage);
+            }
+        }
+
+        function nextPage() {
+            if (currentPage < totalPages) {
+                currentPage++;
+                document.getElementById('pageInput').value = currentPage;
+                window.pythonInterface?.goToPage(currentPage);
+            }
+        }
+
+        function zoomIn() {
+            currentZoom = Math.min(300, currentZoom + 25);
+            updateZoom();
+        }
+
+        function zoomOut() {
+            currentZoom = Math.max(25, currentZoom - 25);
+            updateZoom();
+        }
+
+        function updateZoom() {
+            document.getElementById('zoomInput').value = currentZoom + '%';
+            window.pythonInterface?.setZoom(currentZoom);
+        }
+
+        function fitToWidth() {
+            window.pythonInterface?.fitToWidth();
+        }
+
+        function rotatePage() {
+            currentRotation = (currentRotation + 90) % 360;
+            window.pythonInterface?.rotatePage(currentRotation);
+        }
+
+        function openFile() {
+            window.pythonInterface?.openFile();
+        }
+
+        function downloadPDF() {
+            window.pythonInterface?.downloadPDF();
+        }
+
+        function printPDF() {
+            window.pythonInterface?.printPDF();
+        }
+
+        // Remove page input handler (validation will be handled in Python)
+        // (Was: document.getElementById('pageInput').addEventListener('change', ...) )
+
+        // --- NEW PAGE INPUT HANDLER (just update and call goToPage if valid) ---
+        document.getElementById('pageInput').addEventListener('change', function() {
+            const pageNum = parseInt(this.value);
+            if (pageNum >= 1 && pageNum <= totalPages) {
+                currentPage = pageNum;
+                window.pythonInterface?.goToPage(currentPage);
+                updateActiveThumbnail();
+            } else {
+                this.value = currentPage;
+                showNotification('Invalid page number', 'error');
+            }
+        });
+
+        // Enhanced search functionality with debounce
+        let searchTimeout;
+        document.getElementById('searchInput').addEventListener('input', function() {
+            const query = this.value.trim();
+            
+            clearTimeout(searchTimeout);
+            searchTimeout = setTimeout(() => {
+                if (query.length > 2) {
+                    window.pythonInterface?.search(query);
+                } else {
+                    document.getElementById('searchResults').innerHTML = '';
+                }
+            }, 300);
+        });
+
+        // Utility functions
+        function updateActiveThumbnail() {
+            document.querySelectorAll('.thumbnail').forEach((thumb, index) => {
+                thumb.classList.toggle('active', index + 1 === currentPage);
+            });
+        }
+
+        function showNotification(message, type = 'info') {
+            const notification = document.createElement('div');
+            notification.className = `notification ${type}`;
+            notification.textContent = message;
+            notification.style.cssText = `
+                position: fixed;
+                top: 20px;
+                right: 20px;
+                padding: 1rem 1.5rem;
+                background: ${type === 'error' ? '#ff6b6b' : '#667eea'};
+                color: white;
+                border-radius: 12px;
+                box-shadow: 0 8px 25px rgba(0,0,0,0.3);
+                z-index: 1000;
+                transform: translateX(400px);
+                transition: transform 0.3s ease;
+            `;
+            
+            document.body.appendChild(notification);
+            
+            requestAnimationFrame(() => {
+                notification.style.transform = 'translateX(0)';
+            });
+            
+            setTimeout(() => {
+                notification.style.transform = 'translateX(400px)';
+                setTimeout(() => {
+                    if (notification.parentNode) {
+                        notification.parentNode.removeChild(notification);
+                    }
+                }, 300);
+            }, 3000);
+        }
+
+        // Initialize on load
+        document.addEventListener('DOMContentLoaded', function() {
+            initializeTheme();
+            
+            if (window.innerWidth <= 768) {
+                sidebarCollapsed = true;
+                document.getElementById('sidebar').classList.add('collapsed');
+            }
+        });
+
+        // Functions for Python integration
+        window.uiInterface = {
+            updateFileName: function(fileName) {
+                document.getElementById('fileName').textContent = fileName || 'No document loaded';
+            },
+            
+            updatePageInfo: function(current, total) {
+                currentPage = Math.max(1, Math.min(current, total));
+                totalPages = Math.max(1, total);
+                document.getElementById('pageInput').value = currentPage;
+                document.getElementById('totalPages').textContent = totalPages;
+                updateActiveThumbnail();
+            },
+            
+            updateThumbnails: function(thumbnails) {
+                const grid = document.getElementById('thumbnailsGrid');
+                grid.innerHTML = '';
+                
+                if (!thumbnails || thumbnails.length === 0) {
+                    grid.innerHTML = '<div style="grid-column: 1/-1; text-align: center; color: #666; padding: 2rem;">No thumbnails available</div>';
+                    return;
+                }
+                
+                thumbnails.forEach((thumb, index) => {
+                    const div = document.createElement('div');
+                    div.className = 'thumbnail';
+                    if (index + 1 === currentPage) div.classList.add('active');
+                    
+                    div.innerHTML = `
+                        <img src="${thumb.image}" alt="Page ${index + 1}" 
+                             style="width: 100%; height: 100%; object-fit: contain;"
+                             onerror="this.parentElement.innerHTML='<div style=\\'display:flex;align-items:center;justify-content:center;height:100%;color:#999;\\'>Page ${index + 1}</div>'">
+                        <div class="page-number">${index + 1}</div>
+                    `;
+                    
+                    div.onclick = () => {
+                        currentPage = index + 1;
+                        document.getElementById('pageInput').value = currentPage;
+                        window.pythonInterface?.goToPage(currentPage);
+                        updateActiveThumbnail();
+                    };
+                    
+                    grid.appendChild(div);
+                });
+            },
+            
+            updateOutline: function(outline) {
+                const container = document.getElementById('outlineContainer');
+                
+                if (!outline || outline.length === 0) {
+                    container.innerHTML = '<div style="text-align: center; color: #666; padding: 2rem;">No outline available</div>';
+                    return;
+                }
+                
+                container.innerHTML = '';
+                outline.forEach(item => {
+                    const div = document.createElement('div');
+                    div.className = 'outline-item';
+                    div.innerHTML = `
+                        <div class="outline-text">${item.title || 'Untitled'}</div>
+                        <div class="outline-page">Page ${item.page || 1}</div>
+                    `;
+                    
+                    div.onclick = () => {
+                        currentPage = item.page || 1;
+                        document.getElementById('pageInput').value = currentPage;
+                        window.pythonInterface?.goToPage(currentPage);
+                        updateActiveThumbnail();
+                    };
+                    
+                    container.appendChild(div);
+                });
+            },
+            updateSearchResults: function(results) {
+                const container = document.getElementById('searchResults');
+                if (!results || results.length === 0) {
+                    container.innerHTML = '<div style="color: #666; padding: 1rem;">No results found.</div>';
+                    return;
+                }
+                container.innerHTML = '';
+                results.forEach(result => {
+                    const div = document.createElement('div');
+                    div.className = 'search-result';
+                    div.innerHTML = `
+                        <div class="search-result-text">${result.text}</div>
+                        <div class="search-result-page">Page ${result.page}</div>
+                    `;
+                    div.onclick = () => {
+                        currentPage = result.page;
+                        document.getElementById('pageInput').value = currentPage;
+                        window.pythonInterface?.goToPage(currentPage);
+                        updateActiveThumbnail();
+                    };
+                    container.appendChild(div);
+                });
+            }
+        };
+    </script>
+</body>
+</html>
