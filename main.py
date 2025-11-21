@@ -33,6 +33,7 @@ from Latex_edit.latex_env import LatexEditorEnv
 from global_.numberline import NumberLine
 from global_.editor_widget import EditorTabWidget, load_font_config
 from minibar.minibar import Minibar
+from global_.music_player import MusicPlayerWidget
 
 FONT_CONFIG_PATH = "font_config.json"
 
@@ -237,6 +238,17 @@ class MainTabWidget(QTabWidget):
         widget = DiagrammSketchWidget()
         index = self.addTab(widget, "Diagramm Sketch")
         self.setCurrentIndex(index)
+
+    def add_music_player_tab(self):
+        for i in range(self.count()):
+            widget = self.widget(i)
+            if isinstance(widget, MusicPlayerWidget):
+                self.setCurrentIndex(i)
+                return widget
+        music_widget = MusicPlayerWidget(self)
+        index = self.addTab(music_widget, "Music Player")
+        self.setCurrentIndex(index)
+        return music_widget
 
     def add_advanced_editor_tab(self, file_path):
         """Add an advanced editor tab for large files"""
@@ -854,16 +866,8 @@ class TextEditor(QMainWindow):
 
     def open_music_player(self):
         try:
-            from global_.music_player import MusicPlayerWidget
-            if not self.music_player:
-                self.music_player = QWidget()
-                self.music_player.setWindowTitle("Music Player")
-                layout = QVBoxLayout(self.music_player)
-                player_widget = MusicPlayerWidget(self.music_player)
-                layout.addWidget(player_widget)
-                self.music_player.resize(500, 400)
-            self.music_player.show()
-            self.music_player.activateWindow()
+            player_widget = self.get_active_tabwidget().add_music_player_tab()
+            self.music_player = player_widget
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Failed to open Music Player: {str(e)}")
 

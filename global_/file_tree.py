@@ -2,7 +2,8 @@ import os
 from PyQt5.QtWidgets import (
     QTreeView, QFileSystemModel, QWidget, QVBoxLayout,
     QMenu, QAction, QInputDialog, QMessageBox, QLineEdit,
-    QHBoxLayout, QPushButton
+    QHBoxLayout, QPushButton, QToolButton, QFileDialog, QLabel, QStyle,
+    QFrame
 )
 from PyQt5.QtCore import Qt, QDir, QModelIndex, pyqtSignal
 from PyQt5.QtGui import QIcon
@@ -14,6 +15,7 @@ class FileTreeWidget(QWidget):
     
     def __init__(self, parent=None):
         super().__init__(parent)
+        self.setObjectName("FileTreeWidget")
         self.init_ui()
         self.setup_context_menu()
         theme_data = theme_manager_singleton.get_theme()
@@ -23,19 +25,73 @@ class FileTreeWidget(QWidget):
     def init_ui(self):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
+
+        self.navigation_history = []
+        self.history_index = -1
         
         # Create the file system model
         self.model = QFileSystemModel()
         self.model.setRootPath(QDir.rootPath())
-        
+
+        # Navigation bar
+        self.nav_widget = QFrame()
+        self.nav_widget.setObjectName("FileTreeNav")
+        nav_layout = QHBoxLayout(self.nav_widget)
+        nav_layout.setContentsMargins(8, 6, 8, 6)
+        nav_layout.setSpacing(6)
+
+        self.back_button = QToolButton()
+        self.back_button.setIcon(self.style().standardIcon(QStyle.SP_ArrowBack))
+        self.back_button.setAutoRaise(True)
+        self.back_button.setToolTip("Back")
+        self.back_button.clicked.connect(self.go_back)
+
+        self.forward_button = QToolButton()
+        self.forward_button.setIcon(self.style().standardIcon(QStyle.SP_ArrowForward))
+        self.forward_button.setAutoRaise(True)
+        self.forward_button.setToolTip("Forward")
+        self.forward_button.clicked.connect(self.go_forward)
+
+        self.up_button = QToolButton()
+        self.up_button.setIcon(self.style().standardIcon(QStyle.SP_ArrowUp))
+        self.up_button.setAutoRaise(True)
+        self.up_button.setToolTip("Up one folder")
+        self.up_button.clicked.connect(self.go_up)
+
+        self.browse_button = QToolButton()
+        self.browse_button.setIcon(self.style().standardIcon(QStyle.SP_DirOpenIcon))
+        self.browse_button.setAutoRaise(True)
+        self.browse_button.clicked.connect(self.browse_for_folder)
+        self.browse_button.setToolTip("Browse for folder")
+
+        self.location_label = QLabel("Current location:")
+        self.location_label.setObjectName("LocationLabel")
+        self.location_display = QLineEdit()
+        self.location_display.setObjectName("LocationDisplay")
+        self.location_display.setReadOnly(True)
+        self.location_display.setFocusPolicy(Qt.ClickFocus)
+        self.location_display.setClearButtonEnabled(True)
+
+        nav_layout.addWidget(self.back_button)
+        nav_layout.addWidget(self.forward_button)
+        nav_layout.addWidget(self.up_button)
+        nav_layout.addWidget(self.browse_button)
+        nav_layout.addWidget(self.location_label)
+        nav_layout.addWidget(self.location_display, 1)
+
+        layout.addWidget(self.nav_widget)
+
         # Create the tree view
         self.tree = QTreeView()
+        self.tree.setObjectName("FileTreeView")
         self.tree.setModel(self.model)
         self.tree.setRootIndex(self.model.index(QDir.rootPath()))
         self.tree.setHeaderHidden(True)
         self.tree.setAnimated(True)
         self.tree.setIndentation(16)
         self.tree.setSortingEnabled(True)
+        self.tree.setAlternatingRowColors(True)
+        self.tree.setUniformRowHeights(True)
         
         # Set up the tree view
         self.tree.setContextMenuPolicy(Qt.CustomContextMenu)
@@ -43,15 +99,21 @@ class FileTreeWidget(QWidget):
         self.tree.doubleClicked.connect(self.handle_double_click)
         
         # Create path input widget
-        path_widget = QWidget()
-        path_layout = QHBoxLayout(path_widget)
-        path_layout.setContentsMargins(2, 2, 2, 2)
+        self.path_widget = QFrame()
+        self.path_widget.setObjectName("PathInputBar")
+        path_layout = QHBoxLayout(self.path_widget)
+        path_layout.setContentsMargins(8, 6, 8, 6)
+        path_layout.setSpacing(6)
         
         self.path_input = QLineEdit()
+        self.path_input.setObjectName("PathInput")
         self.path_input.setPlaceholderText("Enter path...")
+        self.path_input.setClearButtonEnabled(True)
         self.path_input.returnPressed.connect(self.navigate_to_path)
         
         self.go_button = QPushButton("Go")
+        self.go_button.setObjectName("PathGo")
+        self.go_button.setCursor(Qt.PointingHandCursor)
         self.go_button.clicked.connect(self.navigate_to_path)
         
         path_layout.addWidget(self.path_input)
@@ -59,7 +121,13 @@ class FileTreeWidget(QWidget):
         
         # Add widgets to main layout
         layout.addWidget(self.tree)
-        layout.addWidget(path_widget)
+        layout.addWidget(self.path_widget)
+
+        # Initialize navigation display
+        initial_path = QDir.rootPath()
+        self.record_history(initial_path)
+        self.update_path_display(initial_path)
+        self.update_navigation_buttons()
         
     def navigate_to_path(self):
         path = self.path_input.text().strip()
@@ -74,13 +142,12 @@ class FileTreeWidget(QWidget):
             
         # Convert to absolute path if relative
         if not os.path.isabs(path):
-            current_path = self.get_current_path() or os.getcwd()
+            current_path = self.get_root_path() or os.getcwd()
             path = os.path.abspath(os.path.join(current_path, path))
             
         if os.path.exists(path):
             if os.path.isdir(path):
                 self.set_root_path(path)
-                self.path_input.setText(path)
             else:
                 # If it's a file, open it
                 self.open_file(path)
@@ -126,9 +193,14 @@ class FileTreeWidget(QWidget):
         
         self.open_action = QAction("Open", self)
         self.open_action.triggered.connect(self.open_selected)
+
+        self.windows_dialog_action = QAction("Create via Windows dialog", self)
+        self.windows_dialog_action.triggered.connect(self.open_windows_file_dialog)
         
         # Add actions to menu
         self.context_menu.addAction(self.open_action)
+        self.context_menu.addSeparator()
+        self.context_menu.addAction(self.windows_dialog_action)
         self.context_menu.addSeparator()
         self.context_menu.addAction(self.new_file_action)
         self.context_menu.addAction(self.new_folder_action)
@@ -139,7 +211,8 @@ class FileTreeWidget(QWidget):
     def show_context_menu(self, position):
         index = self.tree.indexAt(position)
         if index.isValid():
-            self.context_menu.exec_(self.tree.viewport().mapToGlobal(position))
+            self.tree.setCurrentIndex(index)
+        self.context_menu.exec_(self.tree.viewport().mapToGlobal(position))
             
     def handle_double_click(self, index):
         if not index.isValid():
@@ -249,9 +322,79 @@ class FileTreeWidget(QWidget):
             except Exception as e:
                 QMessageBox.critical(self, "Error", f"Failed to delete: {str(e)}")
                 
-    def set_root_path(self, path):
+    def set_root_path(self, path, add_history=True):
         """Set the root path of the file tree"""
-        self.tree.setRootIndex(self.model.index(path))
+        root_index = self.model.index(path)
+        if not root_index.isValid():
+            return
+        self.tree.setRootIndex(root_index)
+        if add_history:
+            self.record_history(path)
+        self.update_path_display(path)
+        self.path_input.setText(path)
+
+    def get_root_path(self):
+        """Return current root path of the tree"""
+        root_index = self.tree.rootIndex()
+        if root_index.isValid():
+            return self.model.filePath(root_index)
+        return QDir.rootPath()
+
+    def record_history(self, path):
+        if self.navigation_history and self.navigation_history[self.history_index] == path:
+            return
+        # Trim forward history
+        if self.history_index < len(self.navigation_history) - 1:
+            self.navigation_history = self.navigation_history[:self.history_index + 1]
+        self.navigation_history.append(path)
+        self.history_index = len(self.navigation_history) - 1
+        self.update_navigation_buttons()
+
+    def go_back(self):
+        if self.history_index > 0:
+            self.history_index -= 1
+            path = self.navigation_history[self.history_index]
+            self.set_root_path(path, add_history=False)
+            self.update_navigation_buttons()
+
+    def go_forward(self):
+        if self.history_index < len(self.navigation_history) - 1:
+            self.history_index += 1
+            path = self.navigation_history[self.history_index]
+            self.set_root_path(path, add_history=False)
+            self.update_navigation_buttons()
+
+    def go_up(self):
+        current_path = self.get_root_path()
+        parent_path = os.path.dirname(os.path.normpath(current_path))
+        if parent_path and os.path.exists(parent_path) and parent_path != current_path:
+            self.set_root_path(parent_path)
+
+    def browse_for_folder(self):
+        start_path = self.get_root_path()
+        folder = QFileDialog.getExistingDirectory(self, "Select Folder", start_path, QFileDialog.ShowDirsOnly)
+        if folder:
+            self.set_root_path(folder)
+
+    def open_windows_file_dialog(self):
+        current_path = self.get_root_path()
+        file_path, _ = QFileDialog.getSaveFileName(self, "Create File", current_path)
+        if file_path:
+            try:
+                os.makedirs(os.path.dirname(file_path), exist_ok=True)
+                with open(file_path, "a", encoding="utf-8"):
+                    pass
+                self.model.setRootPath(self.model.rootPath())
+            except Exception as e:
+                QMessageBox.critical(self, "Error", f"Failed to create file: {str(e)}")
+
+    def update_navigation_buttons(self):
+        self.back_button.setEnabled(self.history_index > 0)
+        self.forward_button.setEnabled(self.history_index < len(self.navigation_history) - 1)
+        self.up_button.setEnabled(self.get_root_path() not in ("", QDir.rootPath()))
+
+    def update_path_display(self, path):
+        self.location_display.setText(path)
         
     def get_current_path(self):
         """Get the path of the currently selected item"""
@@ -263,10 +406,66 @@ class FileTreeWidget(QWidget):
     def set_theme(self, theme_data):
         palette = theme_data["palette"]
         editor = theme_data["editor"]
+        border = palette.get("alternate_base", editor["background"])
+        accent = palette.get("highlight", editor["selection_background"])
+        accent_text = palette.get("highlight_text", editor["selection_foreground"])
+        button_bg = palette.get("button", accent)
+        button_text = palette.get("button_text", palette["window_text"])
         self.setStyleSheet(f"""
-            QWidget {{ background: {palette['window']}; color: {palette['window_text']}; }}
-            QTreeView {{ background: {editor['background']}; color: {editor['foreground']}; alternate-background-color: {palette['alternate_base']}; selection-background-color: {editor['selection_background']}; selection-color: {editor['selection_foreground']}; }}
-            QLineEdit {{ background: {palette['base']}; color: {palette['text']}; border-radius: 4px; }}
-            QPushButton {{ background: {palette['button']}; color: {palette['button_text']}; border-radius: 4px; }}
-            QPushButton:hover {{ background: {palette['highlight']}; color: {palette['highlight_text']}; }}
+            QWidget#FileTreeWidget {{
+                background: {palette['window']};
+                color: {palette['window_text']};
+            }}
+            QWidget#FileTreeNav {{
+                background: {palette['base']};
+                border-bottom: 1px solid {border};
+            }}
+            QWidget#FileTreeNav QLabel {{
+                color: {palette['window_text']};
+                font-weight: 600;
+            }}
+            QWidget#PathInputBar {{
+                background: {palette['base']};
+                border-top: 1px solid {border};
+            }}
+            QLineEdit#PathInput, QLineEdit#LocationDisplay {{
+                background: {editor['background']};
+                color: {editor['foreground']};
+                border: 1px solid {border};
+                border-radius: 6px;
+                padding: 6px 8px;
+            }}
+            QLineEdit#LocationDisplay {{
+                font-weight: 500;
+            }}
+            QPushButton#PathGo {{
+                background: {button_bg};
+                color: {button_text};
+                border: none;
+                border-radius: 6px;
+                padding: 6px 14px;
+            }}
+            QPushButton#PathGo:hover {{
+                background: {accent};
+                color: {accent_text};
+            }}
+            QToolButton {{
+                border: none;
+                padding: 6px;
+                border-radius: 4px;
+            }}
+            QToolButton:hover {{
+                background: {border};
+            }}
+            QTreeView#FileTreeView {{
+                background: {editor['background']};
+                color: {editor['foreground']};
+                border: none;
+                alternate-background-color: {palette['alternate_base']};
+                selection-background-color: {editor['selection_background']};
+                selection-color: {editor['selection_foreground']};
+            }}
+            QTreeView#FileTreeView::item:selected {{
+                border: none;
+            }}
         """) 

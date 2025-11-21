@@ -1,14 +1,15 @@
 import os
 import sys
 from PyQt5.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, 
+    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QSlider, QFileDialog, QMessageBox, QListWidget, QListWidgetItem,
-    QStyle, QSizePolicy, QToolBar, QAction, QMenu, QDialog,
-    QFormLayout, QLineEdit, QDialogButtonBox, QComboBox
+    QStyle, QDialog, QFormLayout, QLineEdit, QDialogButtonBox,
+    QFrame, QShortcut
 )
-from PyQt5.QtGui import QIcon, QFont
-from PyQt5.QtCore import Qt, QUrl, QTimer, pyqtSignal, QSize
+from PyQt5.QtGui import QIcon, QFont, QKeySequence
+from PyQt5.QtCore import Qt, QUrl
 from PyQt5.QtMultimedia import QMediaPlayer, QMediaContent, QMediaPlaylist
+from .theme_manager import theme_manager_singleton
 
 class PlaylistDialog(QDialog):
     def __init__(self, playlist, parent=None):
@@ -115,115 +116,170 @@ class MusicPlayerWidget(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.current_file = None
+        self.setObjectName("MusicPlayerWidget")
+        self.setAcceptDrops(True)
+        self.shortcuts = []
         self.init_ui()
         self.init_player()
+        self.apply_theme(theme_manager_singleton.get_theme())
+        theme_manager_singleton.themeChanged.connect(self.apply_theme)
+        self.setup_shortcuts()
         
     def init_ui(self):
-        # Main layout
         main_layout = QVBoxLayout(self)
-        
-        # Now playing label
+        main_layout.setContentsMargins(16, 16, 16, 16)
+        main_layout.setSpacing(12)
+
+        # Header / now playing card
+        self.header_card = QFrame()
+        self.header_card.setObjectName("PlayerCard")
+        header_layout = QVBoxLayout(self.header_card)
+        header_layout.setContentsMargins(16, 16, 16, 16)
+
         self.now_playing_label = QLabel("No file loaded")
+        self.now_playing_label.setObjectName("NowPlayingLabel")
         self.now_playing_label.setAlignment(Qt.AlignCenter)
         self.now_playing_label.setWordWrap(True)
         font = QFont()
         font.setBold(True)
         self.now_playing_label.setFont(font)
-        main_layout.addWidget(self.now_playing_label)
-        
-        # Playback controls
+        header_layout.addWidget(self.now_playing_label)
+
+        self.hint_label = QLabel("Tip: Drag & drop audio files or folders to build your playlist.")
+        self.hint_label.setWordWrap(True)
+        self.hint_label.setAlignment(Qt.AlignCenter)
+        header_layout.addWidget(self.hint_label)
+
+        main_layout.addWidget(self.header_card)
+
+        # Controls card
+        self.controls_card = QFrame()
+        self.controls_card.setObjectName("PlayerCard")
+        controls_card_layout = QVBoxLayout(self.controls_card)
+        controls_card_layout.setContentsMargins(16, 16, 16, 16)
+        controls_card_layout.setSpacing(10)
+
         controls_layout = QHBoxLayout()
-        
-        # Previous button
+        controls_layout.setSpacing(8)
+
         self.prev_button = QPushButton()
         self.prev_button.setIcon(self.style().standardIcon(QStyle.SP_MediaSkipBackward))
         self.prev_button.clicked.connect(self.play_previous)
         controls_layout.addWidget(self.prev_button)
-        
-        # Play/Pause button
+
         self.play_button = QPushButton()
         self.play_button.setIcon(self.style().standardIcon(QStyle.SP_MediaPlay))
         self.play_button.clicked.connect(self.toggle_playback)
         controls_layout.addWidget(self.play_button)
-        
-        # Stop button
+
         self.stop_button = QPushButton()
         self.stop_button.setIcon(self.style().standardIcon(QStyle.SP_MediaStop))
         self.stop_button.clicked.connect(self.stop_playback)
         controls_layout.addWidget(self.stop_button)
-        
-        # Next button
+
         self.next_button = QPushButton()
         self.next_button.setIcon(self.style().standardIcon(QStyle.SP_MediaSkipForward))
         self.next_button.clicked.connect(self.play_next)
         controls_layout.addWidget(self.next_button)
-        
-        main_layout.addLayout(controls_layout)
-        
-        # Time slider and labels
+
+        controls_layout.addStretch()
+        controls_card_layout.addLayout(controls_layout)
+
         time_layout = QHBoxLayout()
-        
         self.current_time_label = QLabel("0:00")
         time_layout.addWidget(self.current_time_label)
-        
+
         self.time_slider = QSlider(Qt.Horizontal)
         self.time_slider.setRange(0, 0)
         self.time_slider.sliderMoved.connect(self.seek)
         time_layout.addWidget(self.time_slider)
-        
+
         self.total_time_label = QLabel("0:00")
         time_layout.addWidget(self.total_time_label)
-        
-        main_layout.addLayout(time_layout)
-        
-        # Volume control
+        controls_card_layout.addLayout(time_layout)
+
         volume_layout = QHBoxLayout()
-        
         volume_label = QLabel("Volume:")
         volume_layout.addWidget(volume_label)
-        
+
         self.volume_slider = QSlider(Qt.Horizontal)
         self.volume_slider.setRange(0, 100)
         self.volume_slider.setValue(70)
         self.volume_slider.valueChanged.connect(self.set_volume)
         volume_layout.addWidget(self.volume_slider)
-        
-        main_layout.addLayout(volume_layout)
-        
-        # Additional controls
+
+        controls_card_layout.addLayout(volume_layout)
+
+        speed_layout = QHBoxLayout()
+        self.speed_label = QLabel("Speed 1.0x")
+        speed_layout.addWidget(self.speed_label)
+        self.speed_slider = QSlider(Qt.Horizontal)
+        self.speed_slider.setRange(50, 150)
+        self.speed_slider.setValue(100)
+        self.speed_slider.valueChanged.connect(self.update_playback_speed)
+        speed_layout.addWidget(self.speed_slider)
+        controls_card_layout.addLayout(speed_layout)
+
         extra_controls = QHBoxLayout()
-        
-        # Open file button
+        extra_controls.setSpacing(8)
+
         self.open_button = QPushButton("Open File")
         self.open_button.clicked.connect(self.open_file)
         extra_controls.addWidget(self.open_button)
-        
-        # Playlist button
+
+        self.add_folder_button = QPushButton("Add Folder")
+        self.add_folder_button.clicked.connect(self.add_folder_to_playlist)
+        extra_controls.addWidget(self.add_folder_button)
+
         self.playlist_button = QPushButton("Playlist")
         self.playlist_button.clicked.connect(self.manage_playlist)
         extra_controls.addWidget(self.playlist_button)
-        
-        # Loop button
+
         self.loop_button = QPushButton("Loop")
         self.loop_button.setCheckable(True)
         self.loop_button.clicked.connect(self.toggle_loop)
         extra_controls.addWidget(self.loop_button)
-        
-        # Info button
+
+        self.shuffle_button = QPushButton("Shuffle")
+        self.shuffle_button.setCheckable(True)
+        self.shuffle_button.clicked.connect(self.toggle_shuffle)
+        extra_controls.addWidget(self.shuffle_button)
+
         self.info_button = QPushButton("Info")
         self.info_button.clicked.connect(self.show_info)
         extra_controls.addWidget(self.info_button)
-        
-        main_layout.addLayout(extra_controls)
-        
-        # Playlist display
+
+        extra_controls.addStretch()
+        controls_card_layout.addLayout(extra_controls)
+
+        main_layout.addWidget(self.controls_card)
+
+        # Playlist card
+        self.playlist_card = QFrame()
+        self.playlist_card.setObjectName("PlayerCard")
+        playlist_layout = QVBoxLayout(self.playlist_card)
+        playlist_layout.setContentsMargins(16, 16, 16, 16)
+        playlist_layout.setSpacing(10)
+
+        playlist_header = QHBoxLayout()
         self.playlist_label = QLabel("Playlist (0 items)")
-        main_layout.addWidget(self.playlist_label)
-        
+        playlist_header.addWidget(self.playlist_label)
+        playlist_header.addStretch()
+        self.playlist_filter = QLineEdit()
+        self.playlist_filter.setObjectName("PlaylistFilter")
+        self.playlist_filter.setPlaceholderText("Filter playlist...")
+        self.playlist_filter.textChanged.connect(self.filter_playlist)
+        playlist_header.addWidget(self.playlist_filter)
+        playlist_layout.addLayout(playlist_header)
+
         self.playlist_widget = QListWidget()
-        self.playlist_widget.setMaximumHeight(100)
+        self.playlist_widget.setObjectName("PlaylistView")
+        self.playlist_widget.setAlternatingRowColors(True)
+        self.playlist_widget.setMinimumHeight(140)
         self.playlist_widget.itemDoubleClicked.connect(self.playlist_item_clicked)
-        main_layout.addWidget(self.playlist_widget)
+        playlist_layout.addWidget(self.playlist_widget)
+
+        main_layout.addWidget(self.playlist_card)
     
     def init_player(self):
         # Media player
@@ -240,6 +296,8 @@ class MusicPlayerWidget(QWidget):
         
         # Set initial volume
         self.set_volume(self.volume_slider.value())
+        self.update_playback_mode()
+        self.update_playback_speed(self.speed_slider.value())
     
     def open_file(self):
         file, _ = QFileDialog.getOpenFileName(
@@ -249,11 +307,7 @@ class MusicPlayerWidget(QWidget):
         
         if file:
             self.current_file = file
-            self.playlist.clear()
-            self.playlist.addMedia(QMediaContent(QUrl.fromLocalFile(file)))
-            self.update_playlist_display()
-            self.playlist.setCurrentIndex(0)
-            self.player.play()
+            self.add_media_files([file], replace=True, autoplay=True)
     
     def toggle_playback(self):
         if self.player.state() == QMediaPlayer.PlayingState:
@@ -278,9 +332,8 @@ class MusicPlayerWidget(QWidget):
     
     def toggle_loop(self):
         if self.loop_button.isChecked():
-            self.playlist.setPlaybackMode(QMediaPlaylist.Loop)
-        else:
-            self.playlist.setPlaybackMode(QMediaPlaylist.Sequential)
+            self.shuffle_button.setChecked(False)
+        self.update_playback_mode()
     
     def manage_playlist(self):
         dialog = PlaylistDialog(self.playlist, self)
@@ -344,6 +397,7 @@ class MusicPlayerWidget(QWidget):
             self.playlist_widget.addItem(filename)
         
         self.playlist_label.setText(f"Playlist ({count} items)")
+        self.filter_playlist(self.playlist_filter.text())
     
     def add_files_to_playlist(self):
         files, _ = QFileDialog.getOpenFileNames(
@@ -352,13 +406,163 @@ class MusicPlayerWidget(QWidget):
         )
         
         if files:
-            for file in files:
-                url = QUrl.fromLocalFile(file)
-                self.playlist.addMedia(QMediaContent(url))
-            
-            # If this is the first file, start playing
-            if self.playlist.mediaCount() == len(files):
-                self.playlist.setCurrentIndex(0)
-                self.player.play()
-            
-            self.update_playlist_display()
+            autoplay = self.playlist.mediaCount() == 0
+            self.add_media_files(files, replace=False, autoplay=autoplay)
+
+    def add_media_files(self, files, replace=False, autoplay=False):
+        audio_files = [f for f in files if self.is_audio_file(f)]
+        if not audio_files:
+            return
+
+        was_empty = self.playlist.mediaCount() == 0
+        if replace:
+            self.playlist.clear()
+            was_empty = True
+
+        for file in audio_files:
+            url = QUrl.fromLocalFile(file)
+            self.playlist.addMedia(QMediaContent(url))
+
+        if was_empty:
+            self.playlist.setCurrentIndex(0)
+
+        self.update_playlist_display()
+        if autoplay or was_empty or replace:
+            self.player.play()
+
+    def is_audio_file(self, path):
+        audio_extensions = (".mp3", ".wav", ".ogg", ".flac", ".m4a", ".aac")
+        return os.path.isfile(path) and path.lower().endswith(audio_extensions)
+
+    def add_folder_to_playlist(self):
+        folder = QFileDialog.getExistingDirectory(self, "Add Audio Folder", "")
+        if folder:
+            files = self.collect_audio_files(folder)
+            if not files:
+                QMessageBox.information(self, "Folder Empty", "No audio files found in the selected folder.")
+                return
+            autoplay = self.playlist.mediaCount() == 0
+            self.add_media_files(files, replace=False, autoplay=autoplay)
+
+    def collect_audio_files(self, folder):
+        collected = []
+        for root, _, filenames in os.walk(folder):
+            for name in filenames:
+                path = os.path.join(root, name)
+                if self.is_audio_file(path):
+                    collected.append(path)
+        return collected
+
+    def toggle_shuffle(self):
+        if self.shuffle_button.isChecked():
+            self.loop_button.setChecked(False)
+        self.update_playback_mode()
+
+    def update_playback_mode(self):
+        if self.shuffle_button.isChecked():
+            mode = QMediaPlaylist.Random
+        elif self.loop_button.isChecked():
+            mode = QMediaPlaylist.Loop
+        else:
+            mode = QMediaPlaylist.Sequential
+        self.playlist.setPlaybackMode(mode)
+
+    def update_playback_speed(self, value):
+        rate = max(0.5, min(1.5, value / 100))
+        self.player.setPlaybackRate(rate)
+        self.speed_label.setText(f"Speed {rate:.1f}x")
+
+    def filter_playlist(self, text):
+        text = text.lower().strip()
+        for i in range(self.playlist_widget.count()):
+            item = self.playlist_widget.item(i)
+            item.setHidden(bool(text) and text not in item.text().lower())
+
+    def dragEnterEvent(self, event):
+        if event.mimeData().hasUrls():
+            for url in event.mimeData().urls():
+                path = url.toLocalFile()
+                if os.path.isdir(path) or self.is_audio_file(path):
+                    event.acceptProposedAction()
+                    return
+        event.ignore()
+
+    def dropEvent(self, event):
+        paths = []
+        if event.mimeData().hasUrls():
+            for url in event.mimeData().urls():
+                path = url.toLocalFile()
+                if os.path.isdir(path):
+                    paths.extend(self.collect_audio_files(path))
+                elif self.is_audio_file(path):
+                    paths.append(path)
+        if paths:
+            autoplay = self.playlist.mediaCount() == 0
+            self.add_media_files(paths, replace=False, autoplay=autoplay)
+            event.acceptProposedAction()
+        else:
+            event.ignore()
+
+    def setup_shortcuts(self):
+        for seq, handler in [
+            ("Space", self.toggle_playback),
+            ("Ctrl+O", self.open_file),
+            ("Ctrl+L", self.manage_playlist),
+            ("Ctrl+Left", self.play_previous),
+            ("Ctrl+Right", self.play_next)
+        ]:
+            shortcut = QShortcut(QKeySequence(seq), self)
+            shortcut.activated.connect(handler)
+            self.shortcuts.append(shortcut)
+
+    def apply_theme(self, theme_data):
+        palette = theme_data["palette"]
+        editor = theme_data["editor"]
+        accent = palette.get("highlight", editor["selection_background"])
+        accent_text = palette.get("highlight_text", editor["selection_foreground"])
+        border = palette.get("alternate_base", "#3a3a3a")
+        button_bg = palette.get("button", accent)
+        button_text = palette.get("button_text", palette["window_text"])
+
+        self.setStyleSheet(f"""
+            QWidget#MusicPlayerWidget {{
+                background: {palette['window']};
+                color: {palette['window_text']};
+            }}
+            QFrame#PlayerCard {{
+                background: {palette['base']};
+                border: 1px solid {border};
+                border-radius: 12px;
+            }}
+            QLabel#NowPlayingLabel {{
+                font-size: 16px;
+            }}
+            QPushButton {{
+                background: {button_bg};
+                color: {button_text};
+                border: none;
+                border-radius: 6px;
+                padding: 6px 14px;
+            }}
+            QPushButton:checked {{
+                background: {accent};
+                color: {accent_text};
+            }}
+            QPushButton:hover {{
+                background: {accent};
+                color: {accent_text};
+            }}
+            QListWidget#PlaylistView {{
+                border: none;
+                background: {editor['background']};
+                color: {editor['foreground']};
+                alternate-background-color: {palette['alternate_base']};
+            }}
+            QLineEdit#PlaylistFilter {{
+                border: 1px solid {border};
+                border-radius: 6px;
+                padding: 4px 8px;
+                background: {editor['background']};
+                color: {editor['foreground']};
+            }}
+        """)
