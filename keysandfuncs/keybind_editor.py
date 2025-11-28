@@ -1,12 +1,10 @@
 import copy
 from typing import Dict, List
 
-from PyQt5.QtCore import Qt
+from PyQt5.QtCore import Qt, pyqtSignal
 from PyQt5.QtGui import QKeySequence
 from PyQt5.QtWidgets import (
     QAbstractItemView,
-    QDialog,
-    QDialogButtonBox,
     QHBoxLayout,
     QLabel,
     QListWidget,
@@ -19,13 +17,14 @@ from PyQt5.QtWidgets import (
 )
 
 
-class KeybindEditorDialog(QDialog):
-    """Simple dialog that lets the user remap and combine keybinds at runtime."""
+class KeybindEditorWidget(QWidget):
+    """Editor-friendly keybind manager embedded inside a tab."""
+
+    bindingsSaved = pyqtSignal(dict)
+    requestClose = pyqtSignal()
 
     def __init__(self, parent: QWidget, bindings: Dict[str, List[str]], actions: List[dict]):
         super().__init__(parent)
-        self.setWindowTitle("Keybind Editor")
-        self.setModal(True)
         self.setMinimumSize(520, 520)
 
         # Work on a copy so Cancel truly cancels.
@@ -85,10 +84,14 @@ class KeybindEditorDialog(QDialog):
         tip.setStyleSheet("color: #999999; font-size: 11px;")
         layout.addWidget(tip)
 
-        self.button_box = QDialogButtonBox(QDialogButtonBox.Save | QDialogButtonBox.Cancel)
-        self.button_box.accepted.connect(self.accept)
-        self.button_box.rejected.connect(self.reject)
-        layout.addWidget(self.button_box)
+        buttons = QHBoxLayout()
+        self.save_btn = QPushButton("Save Changes")
+        self.save_btn.clicked.connect(self._emit_save)
+        self.close_btn = QPushButton("Close Editor")
+        self.close_btn.clicked.connect(self.requestClose.emit)
+        buttons.addWidget(self.save_btn)
+        buttons.addWidget(self.close_btn)
+        layout.addLayout(buttons)
 
     # ------------------------------------------------------------------ helpers
     def _current_sequence_text(self) -> str:
@@ -161,6 +164,10 @@ class KeybindEditorDialog(QDialog):
             if action["id"] == action_id:
                 return action["title"]
         return action_id
+
+    # ------------------------------------------------------------------ actions
+    def _emit_save(self):
+        self.bindingsSaved.emit(self.get_bindings())
 
     # ------------------------------------------------------------------ public API
     def get_bindings(self) -> Dict[str, List[str]]:

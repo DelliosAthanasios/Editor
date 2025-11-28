@@ -6,9 +6,9 @@ import subprocess
 from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QAction, QFileDialog,
     QStyleFactory, QTabWidget, QWidget, QHBoxLayout,
-    QMessageBox, QVBoxLayout, QTreeView, QFileSystemModel, QSplitter, QDialog, QTextEdit, QActionGroup
+    QMessageBox, QVBoxLayout, QTreeView, QFileSystemModel, QSplitter, QDialog, QTextEdit, QActionGroup, QShortcut
 )
-from PyQt5.QtGui import QFont, QPalette, QColor, QPainter, QFontMetrics, QTextCursor
+from PyQt5.QtGui import QFont, QPalette, QColor, QPainter, QFontMetrics, QTextCursor, QKeySequence
 from PyQt5.QtCore import Qt, QTimer, QRect, QDir, QPoint
 
 from global_.file_explorer import FileExplorer
@@ -384,6 +384,7 @@ class TextEditor(QMainWindow):
         if self.editors:
             return self.editors[-1]
         return None
+
 
     def open_file_in_editor_tab(self, file_path):
         tab_widget = self.get_active_tabwidget()
@@ -1148,16 +1149,6 @@ class TextEditor(QMainWindow):
                 y = 0
             self._minibar.setFixedWidth(width)
             self._minibar.move(self.mapToGlobal(self.rect().topLeft()) + QPoint(x, y))
-
-    def keyPressEvent(self, event):
-        if event.key() == Qt.Key_QuoteLeft:  # ` key
-            if not hasattr(self, '_minibar') or self._minibar is None:
-                self._minibar = Minibar(self)
-            self._minibar.show()
-            self._minibar.raise_()
-            self._minibar.input.setFocus()
-            return
-        super().keyPressEvent(event)
 
 if __name__ == '__main__':
     try:

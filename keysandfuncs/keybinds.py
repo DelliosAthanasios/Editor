@@ -10,7 +10,7 @@ from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QKeySequence
 from PyQt5.QtWidgets import QAction, QApplication, QMenu, QMessageBox, QShortcut
 
-from .keybind_editor import KeybindEditorDialog
+from .keybind_editor import KeybindEditorWidget
 
 
 # ---------------------------------------------------------------------------#
@@ -99,6 +99,55 @@ def _toggle_tab_bar(window):
 def _combined_toggle(window):
     window.view_toggle_numberline()
     window.toggle_minimap()
+
+
+def _cycle_windows(window, direction=1):
+    windows = [ref for ref in _WINDOW_MANAGERS.keys() if hasattr(ref, "activateWindow")]
+    if len(windows) <= 1 or window not in windows:
+        return
+    idx = windows.index(window)
+    target = windows[(idx + direction) % len(windows)]
+    target.show()
+    target.raise_()
+    target.activateWindow()
+    target.setFocus()
+
+
+def _cycle_tabs(window, direction=1):
+    tab_widget = window.get_active_tabwidget()
+    if not tab_widget or tab_widget.count() <= 1:
+        return
+    current = tab_widget.currentIndex()
+    tab_widget.setCurrentIndex((current + direction) % tab_widget.count())
+
+
+def _get_current_text_editor(window):
+    """Helper to get the QTextEdit widget from the active tab."""
+    tab_widget = window.get_active_tabwidget()
+    if not tab_widget:
+        return None
+    current_tab = tab_widget.currentWidget()
+    if not current_tab:
+        return None
+    if hasattr(current_tab, "editor"):
+        return current_tab.editor
+    return None
+
+
+def _toggle_vim_mode(window):
+    """Toggle Vim mode for the current editor."""
+    from .viman import VIM_MODE
+    editor = _get_current_text_editor(window)
+    if editor:
+        VIM_MODE.activate(editor)
+
+
+def _toggle_emacs_mode(window):
+    """Toggle Emacs mode for the current editor."""
+    from .eman import EMACS_MODE
+    editor = _get_current_text_editor(window)
+    if editor:
+        EMACS_MODE.activate(editor)
 
 
 ACTION_BLUEPRINTS = [
@@ -246,6 +295,42 @@ ACTION_BLUEPRINTS = [
         "description": "Toggle both gutter and minimap together",
         "handler": _combined_toggle,
     },
+    {
+        "id": "cycle_windows_forward",
+        "title": "Next Window",
+        "description": "Activate the next editor window",
+        "handler": lambda win: _cycle_windows(win, direction=1),
+    },
+    {
+        "id": "cycle_windows_backward",
+        "title": "Previous Window",
+        "description": "Activate the previous editor window",
+        "handler": lambda win: _cycle_windows(win, direction=-1),
+    },
+    {
+        "id": "cycle_tabs_forward",
+        "title": "Next Tab",
+        "description": "Switch to the next tab",
+        "handler": lambda win: _cycle_tabs(win, direction=1),
+    },
+    {
+        "id": "cycle_tabs_backward",
+        "title": "Previous Tab",
+        "description": "Switch to the previous tab",
+        "handler": lambda win: _cycle_tabs(win, direction=-1),
+    },
+    {
+        "id": "toggle_vim_mode",
+        "title": "Toggle Vim Mode",
+        "description": "Activate/deactivate Vim text manipulation mode",
+        "handler": _toggle_vim_mode,
+    },
+    {
+        "id": "toggle_emacs_mode",
+        "title": "Toggle Emacs Mode",
+        "description": "Activate/deactivate Emacs text manipulation mode",
+        "handler": _toggle_emacs_mode,
+    },
 ]
 
 
@@ -274,6 +359,12 @@ DEFAULT_BINDINGS: Dict[str, List[str]] = {
     "Ctrl+Alt+F": ["open_pdf_dialog"],
     "Ctrl+Alt+T": ["toggle_tab_bar"],
     "Ctrl+Alt+G": ["open_music_player"],
+    "Ctrl+PageDown": ["cycle_tabs_forward"],
+    "Ctrl+PageUp": ["cycle_tabs_backward"],
+    "Ctrl+Alt+Tab": ["cycle_windows_forward"],
+    "Ctrl+Alt+Shift+Tab": ["cycle_windows_backward"],
+    "Ctrl+Shift+V": ["toggle_vim_mode"],
+    "Ctrl+Alt+E": ["toggle_emacs_mode"],
 }
 
 
@@ -408,13 +499,34 @@ def show_default_keybinds(window):
 
 def configure_keybinds(window):
     manager = _manager_for(window)
-    dialog = KeybindEditorDialog(
-        parent=window,
+    tab_widget = window.get_active_tabwidget()
+    if tab_widget is None:
+        QMessageBox.warning(window, "Keybind Editor", "No active tab widget available.")
+        return
+
+    # Prevent duplicate editor tabs
+    for idx in range(tab_widget.count()):
+        widget = tab_widget.widget(idx)
+        if isinstance(widget, KeybindEditorWidget):
+            tab_widget.setCurrentIndex(idx)
+            return
+
+    editor_widget = KeybindEditorWidget(
+        parent=tab_widget,
         bindings=manager.bindings,
         actions=manager.available_actions(),
     )
-    if dialog.exec_():
-        manager.update_bindings(dialog.get_bindings())
+
+    def close_tab():
+        index = tab_widget.indexOf(editor_widget)
+        if index >= 0:
+            tab_widget.removeTab(index)
+
+    editor_widget.bindingsSaved.connect(lambda bindings: (manager.update_bindings(bindings), close_tab()))
+    editor_widget.requestClose.connect(close_tab)
+
+    index = tab_widget.addTab(editor_widget, "Keybind Editor")
+    tab_widget.setCurrentIndex(index)
 
 
 def integrate_keybinds_menu(window):
