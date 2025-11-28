@@ -41,19 +41,24 @@ class VimModeController(QObject):
     def eventFilter(self, obj, event):
         if obj is self._active_editor and event.type() == QEvent.KeyPress:
             if self._mode == "insert":
+                # In insert mode, allow normal typing except for Escape
                 if event.key() == Qt.Key_Escape:
                     self._enter_normal_mode()
                     return True
-                return False
+                return False  # Allow normal text input
             if self._mode == "replace":
+                # In replace mode, allow typing but handle Escape
                 if event.key() == Qt.Key_Escape:
                     self._active_editor.setOverwriteMode(False)
                     self._enter_normal_mode()
                     return True
                 self._active_editor.setOverwriteMode(True)
-                return False
+                return False  # Allow overwrite text input
+            # In normal mode: consume ALL keys except handled commands
             if self._handle_normal_mode(event):
                 return True
+            # If key wasn't handled, consume it (ignore it) - like real Vim
+            return True
         return super().eventFilter(obj, event)
 
     # ------------------------------------------------------------------ modes

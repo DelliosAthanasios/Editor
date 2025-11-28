@@ -31,8 +31,11 @@ class EmacsModeController(QObject):
 
     def eventFilter(self, obj, event):
         if obj is self._active_editor and event.type() == QEvent.KeyPress:
+            # Handle Emacs commands or escape
             if self._handle_key(event):
                 return True
+            # All other keys are consumed/ignored in Emacs mode
+            return True
         return super().eventFilter(obj, event)
 
     def _handle_key(self, event):
@@ -60,6 +63,7 @@ class EmacsModeController(QObject):
         elif key == Qt.Key_Escape:
             self.deactivate()
             return True
+        # Key not handled - will be consumed by eventFilter
         return False
 
     def _move(self, move_type):
