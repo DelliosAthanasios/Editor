@@ -303,6 +303,8 @@ class TextEditor(QMainWindow):
         theme_manager_singleton.themeChanged.connect(self.on_theme_changed)
         enable_dynamic_saving_for_qt(self)
         self._minibar = None
+        # Show minibar by default
+        QTimer.singleShot(100, self.show_minibar)
 
     def editor_factory(self):
         return MainTabWidget(file_open_callback=self.open_file_in_editor_tab)

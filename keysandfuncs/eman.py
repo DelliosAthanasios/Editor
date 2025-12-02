@@ -20,14 +20,28 @@ class EmacsModeController(QObject):
         self.deactivate()
         self._active_editor = editor
         editor.installEventFilter(self)
+        self._notify_mode_change()
 
     def deactivate(self):
+        was_active = self._active_editor is not None
         if self._active_editor:
             try:
                 self._active_editor.removeEventFilter(self)
             except Exception:
                 pass
         self._active_editor = None
+        if was_active:
+            self._notify_mode_change()
+    
+    def _notify_mode_change(self):
+        """Notify keybind manager to update shortcut states."""
+        try:
+            from .keybinds import _WINDOW_MANAGERS
+            for window, manager in _WINDOW_MANAGERS.items():
+                if hasattr(manager, 'update_shortcut_state'):
+                    manager.update_shortcut_state()
+        except Exception:
+            pass
 
     def eventFilter(self, obj, event):
         if obj is self._active_editor and event.type() == QEvent.KeyPress:
@@ -87,4 +101,9 @@ EMACS_MODE = EmacsModeController()
 
 def activate_emacs_mode(editor):
     EMACS_MODE.activate(editor)
+
+
+def is_emacs_mode_active(editor):
+    """Check if emacs mode is active for the given editor."""
+    return EMACS_MODE._active_editor is editor if editor else False
 

@@ -1,16 +1,14 @@
 """
-Minimal Emacs-style command registry used by the Minibar.
-
-It reuses the same action handlers defined for the regular keybind system so
-both features stay in sync without needing a second implementation.
+Emacs-style command handler for minibar when emacs mode is active.
+Handles emacs key sequences like C-x C-f, C-x C-s, etc.
 """
 
 from typing import Callable, Dict
-
-from .keybinds import ACTION_BLUEPRINTS
+from keysandfuncs.keybinds import ACTION_BLUEPRINTS
 
 
 def _action_lookup() -> Dict[str, Callable]:
+    """Create a lookup table from action IDs to handlers."""
     lookup = {}
     for blueprint in ACTION_BLUEPRINTS:
         lookup[blueprint["id"]] = blueprint["handler"]
@@ -21,6 +19,7 @@ _HANDLERS = _action_lookup()
 
 
 def _cmd(action_id: str, description: str):
+    """Create a command wrapper for an action."""
     handler = _HANDLERS.get(action_id)
 
     def _runner(window):
@@ -30,7 +29,8 @@ def _cmd(action_id: str, description: str):
     return {"description": description, "func": _runner}
 
 
-emacs_commands = {
+# Emacs command registry - integrated from emacscommsbar
+EMACS_COMMANDS = {
     "C-x C-f": _cmd("open_file", "Open file"),
     "C-x C-s": _cmd("save_file", "Save file"),
     "C-x C-n": _cmd("new_tab", "New tab"),
@@ -55,5 +55,33 @@ emacs_commands = {
 }
 
 
-__all__ = ["emacs_commands"]
+def execute_emacs_command(window, command_text: str) -> bool:
+    """
+    Execute an emacs-style command sequence.
+    Returns True if command was handled, False otherwise.
+    """
+    if not command_text:
+        return False
+    
+    cmd = command_text.strip()
+    
+    # Check if command exists
+    if cmd in EMACS_COMMANDS:
+        try:
+            EMACS_COMMANDS[cmd]["func"](window)
+            return True
+        except Exception as e:
+            from PyQt5.QtWidgets import QMessageBox
+            QMessageBox.warning(window, "Command Error", f"Error executing '{cmd}': {e}")
+            return True
+    
+    return False
+
+
+def get_emacs_help() -> str:
+    """Return help text for emacs commands."""
+    help_lines = ["Emacs Commands:"]
+    for cmd, info in sorted(EMACS_COMMANDS.items()):
+        help_lines.append(f"  {cmd:<15} {info['description']}")
+    return "\n".join(help_lines)
 

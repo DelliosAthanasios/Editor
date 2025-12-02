@@ -1,19 +1,33 @@
+"""
+Enhanced Minibar with mode-aware vim/emacs command support.
+
+Features:
+- Mode indicator showing current editing mode (normal/vim/emacs)
+- Vim command-line interface when vim mode is active
+- Emacs command interface when emacs mode is active
+- Session history and auto-clear on quit
+"""
+
 import sys
 import os
 import json
-from PyQt5.QtWidgets import (QWidget, QLineEdit, QVBoxLayout, QLabel, QApplication, QMessageBox)
-from PyQt5.QtCore import Qt, QEvent
+from PyQt5.QtWidgets import QWidget, QLineEdit, QVBoxLayout, QHBoxLayout, QLabel, QApplication, QMessageBox
+from PyQt5.QtCore import Qt, QEvent, QTimer
 from PyQt5.QtGui import QFont, QKeySequence
-from keysandfuncs.emacscommsbar import emacs_commands
+
+from .mode_detector import get_editor_mode, get_vim_submode, get_current_editor
+from .mode_indicator import ModeIndicator
+from .vim_handler import execute_vim_command, get_vim_help
+from .emacs_handler import execute_emacs_command, get_emacs_help, EMACS_COMMANDS
+
 
 class Minibar(QWidget):
     """
-    Emacs-like minibuffer:
-    - docks to bottom of parent
-    - accepts Emacs-style key sequences (C-x prefix supported)
-    - saves every submitted minibuffer string to mibdata.json during the session
-    - clears mibdata.json on application quit
-    - supports Up/Down history navigation for entered commands during the session
+    Enhanced minibuffer with mode-aware command handling:
+    - Shows current editing mode (normal/vim/emacs)
+    - Vim command-line mode when vim is active
+    - Emacs command sequences when emacs is active
+    - Docks to bottom of parent window
     """
 
     def __init__(self, parent=None):
@@ -22,15 +36,24 @@ class Minibar(QWidget):
         self.setAttribute(Qt.WA_TranslucentBackground, True)
         self.setFixedHeight(48)
         self.setStyleSheet("background-color: #23232a; color: #fff; border: none;")
-        self.key_sequence = []  # list of tokens like ["C-x", "C-f"]
+        
+        # Command state
+        self.key_sequence = []
         self.history = []
         self.history_index = -1
-        # mibdata.json path inside the minibar package folder
+        self.current_mode = "normal"
+        self.current_submode = None
+        
+        # mibdata.json path
         self.mibdata_path = os.path.join(os.path.dirname(__file__), "mibdata.json")
-        # ensure file exists and start a fresh session file
         self._write_mibdata([])
 
         self.init_ui()
+        
+        # Update mode indicator periodically
+        self.mode_timer = QTimer(self)
+        self.mode_timer.timeout.connect(self.update_mode_indicator)
+        self.mode_timer.start(100)  # Update every 100ms
 
         # Connect to application quit to clear mibdata.json
         app = QApplication.instance()
@@ -38,7 +61,6 @@ class Minibar(QWidget):
             try:
                 app.aboutToQuit.connect(self.clear_mibdata)
             except Exception:
-                # if connection fails, ignore; clearing will still happen if explicitly called
                 pass
 
     def init_ui(self):
@@ -46,13 +68,24 @@ class Minibar(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
 
-        # Status/info line (Emacs style)
-        self.status = QLabel("C-x  (C-h for help)", self)
+        # Top row: mode indicator + status
+        top_row = QHBoxLayout()
+        top_row.setContentsMargins(0, 0, 0, 0)
+        top_row.setSpacing(0)
+        
+        # Mode indicator
+        self.mode_indicator = ModeIndicator(self)
+        top_row.addWidget(self.mode_indicator)
+        
+        # Status label
+        self.status = QLabel("Ready", self)
         self.status.setFont(QFont("Consolas", 11))
         self.status.setStyleSheet("background: #23232a; color: #fff; border: none; padding-left: 6px;")
-        layout.addWidget(self.status)
+        top_row.addWidget(self.status, 1)
+        
+        layout.addLayout(top_row)
 
-        # Minibuffer input
+        # Input line
         self.input = QLineEdit(self)
         self.input.setFont(QFont("Consolas", 12))
         self.input.setPlaceholderText("")
@@ -61,39 +94,99 @@ class Minibar(QWidget):
         layout.addWidget(self.input)
 
         self.setLayout(layout)
-
-        # Install event filter on QLineEdit to intercept key sequences and history navigation
         self.input.installEventFilter(self)
 
+    def update_mode_indicator(self):
+        """Update the mode indicator based on current editor state."""
+        window = self.parent()
+        if not window:
+            return
+        
+        editor = get_current_editor(window)
+        mode = get_editor_mode(editor)
+        submode = get_vim_submode(editor) if mode == "vim" else None
+        
+        if mode != self.current_mode or submode != self.current_submode:
+            self.current_mode = mode
+            self.current_submode = submode
+            self.mode_indicator.set_mode(mode, submode)
+            
+            # Update status message based on mode
+            if mode == "vim":
+                self.status.setText("Vim command mode (type :command)")
+            elif mode == "emacs":
+                self.status.setText("Emacs mode (type C-x commands)")
+            else:
+                self.status.setText("Normal mode")
+
     def execute_command(self):
+        """Execute the command entered in the minibar."""
         text = self.input.text().strip()
-        # Save command to in-session history and to mibdata.json (save everything typed)
+        if not text:
+            return
+        
+        # Save to history
         if text:
             self.history.append(text)
             self.history_index = len(self.history)
             self._append_mibdata(text)
 
-        # If the command matches a registered emacs command, execute it; otherwise warn
-        if text in emacs_commands:
-            try:
-                main_window = self.parent()
-                emacs_commands[text]["func"](main_window)
-            except Exception as e:
-                QMessageBox.critical(self, "Command Error", f"Error executing command '{text}': {e}")
-        else:
-            QMessageBox.warning(self, "Unknown Command", f"Unknown command: {text}")
+        window = self.parent()
+        if not window:
+            return
 
-        # Clear input after executing/attempting
+        # Route command based on current mode
+        editor = get_current_editor(window)
+        mode = get_editor_mode(editor)
+        handled = False
+
+        if mode == "vim":
+            # Vim command-line mode
+            if text == ":help" or text == ":h":
+                QMessageBox.information(self, "Vim Help", get_vim_help())
+                handled = True
+            else:
+                handled = execute_vim_command(window, text)
+        elif mode == "emacs":
+            # Emacs command mode - text should already be a sequence like "C-x C-f"
+            handled = execute_emacs_command(window, text)
+        else:
+            # Normal mode - try both vim and emacs formats
+            if text.startswith(":"):
+                handled = execute_vim_command(window, text)
+            else:
+                handled = execute_emacs_command(window, text)
+
+        if not handled:
+            QMessageBox.warning(self, "Unknown Command", f"Unknown command: {text}\n\nUse :help for vim commands or C-x C-h for emacs help")
+
+        # Clear input and reset
         self.input.clear()
-        # Reset sequence and status
         self.key_sequence = []
-        self.status.setText("C-x  (C-h for help)")
-        # Return focus to main window/editor if possible
-        if self.parent():
-            self.parent().setFocus()
+        self.update_status_for_mode()
+
+        # Return focus
+        if window:
+            window.setFocus()
+
+    def update_status_for_mode(self):
+        """Update status message based on current mode."""
+        window = self.parent()
+        if not window:
+            return
+        
+        editor = get_current_editor(window)
+        mode = get_editor_mode(editor)
+        
+        if mode == "vim":
+            self.status.setText("Vim command mode (type :command)")
+        elif mode == "emacs":
+            self.status.setText("Emacs mode (type C-x commands)")
+        else:
+            self.status.setText("Normal mode")
 
     def eventFilter(self, obj, event):
-        # Only handle key events for our input QLineEdit
+        """Handle key events for command input and mode-specific behavior."""
         if obj is self.input and event.type() == QEvent.KeyPress:
             key = event.key()
             mods = event.modifiers()
@@ -101,14 +194,12 @@ class Minibar(QWidget):
             # History navigation
             if key == Qt.Key_Up:
                 if self.history:
-                    # move back in history
                     self.history_index = max(0, self.history_index - 1)
                     self.input.setText(self.history[self.history_index])
                     self.input.setCursorPosition(len(self.input.text()))
                 return True
             elif key == Qt.Key_Down:
                 if self.history:
-                    # move forward in history
                     self.history_index = min(len(self.history), self.history_index + 1)
                     if self.history_index < len(self.history):
                         self.input.setText(self.history[self.history_index])
@@ -117,88 +208,86 @@ class Minibar(QWidget):
                     self.input.setCursorPosition(len(self.input.text()))
                 return True
 
-            # Cancel sequence on Ctrl+G
-            if mods & Qt.ControlModifier and (key == Qt.Key_G):
+            # Cancel on Ctrl+G (emacs style)
+            if mods & Qt.ControlModifier and key == Qt.Key_G:
                 self.key_sequence = []
-                self.status.setText("C-x  (C-h for help)")
+                self.update_status_for_mode()
                 self.input.clear()
                 return True
 
-            # If any modifier that we care about is pressed, try to build an Emacs-style token
-            if mods & (Qt.ControlModifier | Qt.AltModifier | Qt.MetaModifier):
-                seq_str = self._make_seq_str(key, mods)
-                if not seq_str:
-                    # not a printable sequence we can handle
-                    # fall back to default
-                    return False
+            # Mode-specific handling
+            window = self.parent()
+            if window:
+                editor = get_current_editor(window)
+                mode = get_editor_mode(editor)
 
-                # Handle C-x prefix specially (Emacs-style)
-                if seq_str == "C-x":
-                    # If already have C-x as prefix, reset it (double C-x is treated as prefix restart)
-                    self.key_sequence = ["C-x"]
-                    self.status.setText("C-x")
-                    return True
+                if mode == "emacs":
+                    # Emacs mode: handle C-x prefix and key sequences
+                    if mods & (Qt.ControlModifier | Qt.AltModifier | Qt.MetaModifier):
+                        seq_str = self._make_seq_str(key, mods)
+                        if not seq_str:
+                            return False
 
-                # If current sequence is a C-x prefix, form full sequence like "C-x C-f"
-                if self.key_sequence == ["C-x"]:
-                    full = " ".join(self.key_sequence + [seq_str])
-                    # show the sequence in input and try to execute
-                    self.input.setText(full)
-                    # If command exists, execute immediately
-                    if full in emacs_commands:
-                        self.execute_command()
-                    else:
-                        # Not an exact command; leave sequence displayed awaiting further input or manual enter
-                        self.status.setText(full)
-                    # Reset prefix state after attempting
-                    self.key_sequence = []
-                    return True
-                else:
-                    # No prefix: check single-token commands like "C-f", "M-x", etc.
-                    if seq_str in emacs_commands:
-                        self.input.setText(seq_str)
-                        self.execute_command()
+                        # Handle C-x prefix
+                        if seq_str == "C-x":
+                            self.key_sequence = ["C-x"]
+                            self.status.setText("C-x")
+                            return True
+
+                        # Complete C-x sequence
+                        if self.key_sequence == ["C-x"]:
+                            full = " ".join(self.key_sequence + [seq_str])
+                            self.input.setText(full)
+                            if full in EMACS_COMMANDS:
+                                self.execute_command()
+                            else:
+                                self.status.setText(full)
+                            self.key_sequence = []
+                            return True
+                        else:
+                            # Single command
+                            if seq_str in EMACS_COMMANDS:
+                                self.input.setText(seq_str)
+                                self.execute_command()
+                                return True
+                            else:
+                                self.status.setText(seq_str)
+                                self.key_sequence = [seq_str]
+                                return True
+
+                elif mode == "vim":
+                    # Vim mode: allow typing : for command-line
+                    if key == Qt.Key_Colon and not (mods & (Qt.ControlModifier | Qt.AltModifier)):
+                        self.input.setText(":")
+                        self.input.setCursorPosition(1)
                         return True
-                    else:
-                        # Display the single token in the status so user sees it (but don't put into QLineEdit)
-                        self.status.setText(seq_str)
-                        # store it as a key_sequence in case the emacs_commands contains space-separated variants (rare)
-                        self.key_sequence = [seq_str]
-                        return True
 
-            # If no modifiers: let QLineEdit handle normal typing, but also reset any held key_sequence
+            # Default: allow normal typing
             self.key_sequence = []
-            self.status.setText("C-x  (C-h for help)")
             return False
 
         return super().eventFilter(obj, event)
 
     def _make_seq_str(self, key, mods):
-        """
-        Convert a key + mods to an Emacs-style token string like "C-f", "M-x", "C-SPC", etc.
-        Returns None for keys we don't handle.
-        """
-        # Prefer direct letter keys when possible
+        """Convert key+modifiers to Emacs-style string like 'C-f', 'M-x'."""
         if Qt.Key_A <= key <= Qt.Key_Z:
             char = chr(key).lower()
             if mods & Qt.ControlModifier:
                 return f"C-{char}"
-            if mods & Qt.AltModifier or mods & Qt.MetaModifier:
+            if mods & (Qt.AltModifier | Qt.MetaModifier):
                 return f"M-{char}"
 
-        # Special keys handling
         if mods & Qt.ControlModifier:
             if key == Qt.Key_Space:
                 return "C-SPC"
-            # numeric and punctuation fallback via QKeySequence
             seq = QKeySequence(key).toString().lower()
             if seq:
                 return f"C-{seq}"
             return None
+
         if mods & (Qt.AltModifier | Qt.MetaModifier):
             seq = QKeySequence(key).toString().lower()
             if seq:
-                # map 'delete' to 'DEL' for compatibility with some emacs notation
                 if seq.lower() == "delete":
                     return "M-DEL"
                 return f"M-{seq}"
@@ -207,7 +296,7 @@ class Minibar(QWidget):
         return None
 
     def showEvent(self, event):
-        # Dock to bottom of parent, flush with edge
+        """Dock to bottom when shown."""
         if self.parent():
             parent_geom = self.parent().geometry()
             width = parent_geom.width()
@@ -216,12 +305,12 @@ class Minibar(QWidget):
             y = parent_geom.height() - height
             self.setFixedWidth(width)
             self.move(x, y)
-            # Focus the input when minibar is shown
             self.input.setFocus()
+            self.update_mode_indicator()
         super().showEvent(event)
 
     def resizeEvent(self, event):
-        # Keep minibar docked at bottom on parent resize, flush with edge
+        """Keep docked at bottom on resize."""
         if self.parent():
             parent_geom = self.parent().geometry()
             width = parent_geom.width()
@@ -258,11 +347,12 @@ class Minibar(QWidget):
             pass
 
     def clear_mibdata(self):
-        """Clear contents of mibdata.json (write empty list). Called on app exit."""
+        """Clear mibdata.json on app exit."""
         try:
             self._write_mibdata([])
         except Exception:
             pass
+
 
 # Example usage for testing
 if __name__ == "__main__":

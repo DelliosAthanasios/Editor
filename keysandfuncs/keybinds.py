@@ -365,6 +365,7 @@ DEFAULT_BINDINGS: Dict[str, List[str]] = {
     "Ctrl+Alt+Shift+Tab": ["cycle_windows_backward"],
     "Ctrl+Shift+V": ["toggle_vim_mode"],
     "Ctrl+Alt+E": ["toggle_emacs_mode"],
+    "Escape": ["toggle_vim_mode"],
 }
 
 
@@ -387,6 +388,7 @@ class KeybindManager:
     def __init__(self, window):
         self.window = window
         self._shortcuts: List[QShortcut] = []
+        self._shortcut_info: List = []  # (shortcut, sequence, action_ids) tuples
         self._actions: Dict[str, ActionEntry] = self._build_action_map()
         self._bindings: Dict[str, List[str]] = self._load_bindings()
         SESSION_LOGGER.attach_to_app()
@@ -431,6 +433,7 @@ class KeybindManager:
     # ---------------------- shortcut management ---------------------------#
     def _install_shortcuts(self):
         self._clear_shortcuts()
+        self._shortcut_info = []  # List of (shortcut, sequence, action_ids) tuples
         for sequence, action_ids in self._bindings.items():
             if not sequence.strip():
                 continue
@@ -440,6 +443,7 @@ class KeybindManager:
                 lambda seq=sequence, ids=list(action_ids): self._execute_binding(seq, ids)
             )
             self._shortcuts.append(shortcut)
+            self._shortcut_info.append((shortcut, sequence, action_ids))
 
     def _clear_shortcuts(self):
         for shortcut in self._shortcuts:
@@ -449,8 +453,38 @@ class KeybindManager:
                 pass
             shortcut.setParent(None)
         self._shortcuts.clear()
+        self._shortcut_info.clear()
+    
+    def set_shortcuts_enabled(self, enabled: bool, allow_mode_toggles: bool = False):
+        """Enable or disable shortcuts. If allow_mode_toggles=True, keep mode toggle shortcuts enabled."""
+        allowed_actions = {"toggle_vim_mode", "toggle_emacs_mode", "open_minibar"} if allow_mode_toggles else set()
+        
+        for shortcut, sequence, action_ids in self._shortcut_info:
+            # Keep enabled if it's a mode toggle and we're allowing them
+            if allow_mode_toggles and any(aid in allowed_actions for aid in action_ids):
+                shortcut.setEnabled(True)
+            else:
+                shortcut.setEnabled(enabled)
 
     def _execute_binding(self, sequence: str, action_ids: Sequence[str]):
+        # Check if vim or emacs mode is active - block normal keybinds if so
+        editor = _get_current_text_editor(self.window)
+        if editor:
+            mode = self._get_current_mode(editor)
+            if mode in ("vim", "emacs"):
+                # Only allow mode toggles and special commands in modal modes
+                allowed_actions = {
+                    "toggle_vim_mode",
+                    "toggle_emacs_mode",
+                    "open_minibar",
+                }
+                # Filter out actions that aren't allowed in modal mode
+                filtered_ids = [aid for aid in action_ids if aid in allowed_actions]
+                if not filtered_ids:
+                    # Block this keybind - modal mode is active
+                    return
+                action_ids = filtered_ids
+        
         executed = []
         for action_id in action_ids:
             action = self._actions.get(action_id)
@@ -460,6 +494,37 @@ class KeybindManager:
             executed.append(action_id)
         if executed:
             SESSION_LOGGER.log(sequence, executed)
+    
+    def update_shortcut_state(self):
+        """Update shortcut enabled state based on current mode."""
+        editor = _get_current_text_editor(self.window)
+        if editor:
+            mode = self._get_current_mode(editor)
+            # Disable shortcuts when in modal mode, but keep mode toggles enabled
+            if mode in ("vim", "emacs"):
+                self.set_shortcuts_enabled(False, allow_mode_toggles=True)
+            else:
+                self.set_shortcuts_enabled(True)
+        else:
+            self.set_shortcuts_enabled(True)
+    
+    def _get_current_mode(self, editor) -> str:
+        """Get the current editing mode for an editor."""
+        try:
+            from .viman import is_vim_mode_active
+            if is_vim_mode_active(editor):
+                return "vim"
+        except Exception:
+            pass
+        
+        try:
+            from .eman import is_emacs_mode_active
+            if is_emacs_mode_active(editor):
+                return "emacs"
+        except Exception:
+            pass
+        
+        return "normal"
 
     # ---------------------- external API ----------------------------------#
     @property
@@ -555,9 +620,21 @@ def integrate_keybinds_menu(window):
     log_action = QAction("Open Current Log", window)
     log_action.triggered.connect(lambda: _open_log_file(window))
     keybind_menu.addAction(log_action)
+    
+    keybind_menu.addSeparator()
+    
+    dict_action = QAction("Command Dictionary", window)
+    dict_action.triggered.connect(lambda: _show_command_dictionary(window))
+    keybind_menu.addAction(dict_action)
 
     # Ensure shortcuts stay alive for window lifetime.
     _WINDOW_MANAGERS[window] = manager
+
+
+def _show_command_dictionary(window):
+    """Show command dictionary as a tab."""
+    from .command_dictionary import show_command_dictionary
+    show_command_dictionary(window)
 
 
 def _find_menu(menu_bar, title: str) -> Optional[QMenu]:

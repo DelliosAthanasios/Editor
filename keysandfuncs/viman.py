@@ -25,8 +25,10 @@ class VimModeController(QObject):
         self._pending_command = None
         editor.installEventFilter(self)
         editor.setFocus()
+        self._notify_mode_change()
 
     def deactivate(self):
+        was_active = self._active_editor is not None
         if self._active_editor:
             try:
                 self._active_editor.removeEventFilter(self)
@@ -36,28 +38,38 @@ class VimModeController(QObject):
         self._active_editor = None
         self._mode = "normal"
         self._pending_command = None
+        if was_active:
+            self._notify_mode_change()
+    
+    def _notify_mode_change(self):
+        """Notify keybind manager to update shortcut states."""
+        try:
+            from .keybinds import _WINDOW_MANAGERS
+            for window, manager in _WINDOW_MANAGERS.items():
+                if hasattr(manager, 'update_shortcut_state'):
+                    manager.update_shortcut_state()
+        except Exception:
+            pass
 
     # ------------------------------------------------------------------ Qt hooks
     def eventFilter(self, obj, event):
         if obj is self._active_editor and event.type() == QEvent.KeyPress:
-            if self._mode == "insert":
-                # In insert mode, allow normal typing except for Escape
-                if event.key() == Qt.Key_Escape:
-                    self._enter_normal_mode()
-                    return True
-                return False  # Allow normal text input
-            if self._mode == "replace":
-                # In replace mode, allow typing but handle Escape
-                if event.key() == Qt.Key_Escape:
-                    self._active_editor.setOverwriteMode(False)
-                    self._enter_normal_mode()
-                    return True
-                self._active_editor.setOverwriteMode(True)
-                return False  # Allow overwrite text input
-            # In normal mode: consume ALL keys except handled commands
+            # Always in normal mode - handle vim commands or allow typing
+            key = event.key()
+            mods = event.modifiers()
+            text = event.text()
+            
+            # Handle vim commands first
             if self._handle_normal_mode(event):
                 return True
-            # If key wasn't handled, consume it (ignore it) - like real Vim
+            
+            # Check if this is a printable character that should allow typing
+            # Allow typing if it's a normal character and not a vim command
+            if text and text.isprintable() and not mods & (Qt.ControlModifier | Qt.AltModifier):
+                # Allow normal text input - don't consume it
+                return False
+            
+            # Consume all other keys
             return True
         return super().eventFilter(obj, event)
 
@@ -322,38 +334,44 @@ class VimModeController(QObject):
             self._move_to_document_end()
             return True
         if text == "i":
-            self._enter_insert_mode()
-            return True
+            # Allow typing - don't block it
+            return False
         if text == "I":
             self._move_to_line_start(True)
-            self._enter_insert_mode()
-            return True
+            # Allow typing after moving
+            return False
         if text == "a":
             self._move_cursor(QTextCursor.Right)
-            self._enter_insert_mode()
-            return True
+            # Allow typing after moving
+            return False
         if text == "A":
             self._move_to_line_end()
-            self._enter_insert_mode()
-            return True
+            # Allow typing after moving
+            return False
         if text == "o":
             self._open_line(below=True)
-            return True
+            # Allow typing after opening line
+            return False
         if text == "O":
             self._open_line(below=False)
-            return True
+            # Allow typing after opening line
+            return False
         if text == "r":
             self._pending_command = "r"
             return True
         if text == "R":
-            self._enter_replace_mode()
-            return True
+            # Enter overwrite mode but don't track as special mode
+            if self._active_editor:
+                self._active_editor.setOverwriteMode(True)
+            return False
         if text == "s":
-            self._delete_char_under(enter_insert=True)
-            return True
+            self._delete_char_under(enter_insert=False)
+            # Allow typing after deleting
+            return False
         if text == "S":
-            self._delete_line(enter_insert=True)
-            return True
+            self._delete_line(enter_insert=False)
+            # Allow typing after deleting
+            return False
         if text == "x":
             self._delete_char_under()
             return True
@@ -377,8 +395,33 @@ class VimModeController(QObject):
         if key == Qt.Key_Escape:
             self.deactivate()
             return True
+        
+        # Handle : to open minibar in vim mode
+        if key == Qt.Key_Colon and not (mods & (Qt.ControlModifier | Qt.AltModifier)):
+            self._open_minibar()
+            return True
 
         return False
+    
+    def _open_minibar(self):
+        """Open minibar and focus it with : prefilled."""
+        try:
+            # Find the main window
+            editor = self._active_editor
+            if not editor:
+                return
+            window = editor.window()
+            if not window or not hasattr(window, 'show_minibar'):
+                return
+            # Show minibar
+            window.show_minibar()
+            # Prefill with :
+            if hasattr(window, '_minibar') and window._minibar:
+                window._minibar.input.setText(":")
+                window._minibar.input.setCursorPosition(1)
+                window._minibar.input.setFocus()
+        except Exception:
+            pass
 
     # ------------------------------------------------------------------ operators
     def _handle_operator_sequence(self, operator, key, text):
@@ -421,4 +464,16 @@ VIM_MODE = VimModeController()
 
 def activate_vim_mode(editor):
     VIM_MODE.activate(editor)
+
+
+def is_vim_mode_active(editor):
+    """Check if vim mode is active for the given editor."""
+    return VIM_MODE._active_editor is editor if editor else False
+
+
+def get_vim_mode(editor):
+    """Get the vim submode (normal/insert/replace) for the given editor."""
+    if is_vim_mode_active(editor):
+        return VIM_MODE._mode
+    return None
 
