@@ -2,6 +2,7 @@ import sys
 import os
 import json
 import subprocess
+import logging
 
 from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QAction, QFileDialog,
@@ -34,8 +35,10 @@ from global_.numberline import NumberLine
 from global_.editor_widget import EditorTabWidget, load_font_config
 from minibar.minibar import Minibar
 from global_.music_player import MusicPlayerWidget
+from global_.cli_tabs import LanguageDetectorTab, SystemMonitorTab, TerminalOrganizerTab
 
 FONT_CONFIG_PATH = "font_config.json"
+logger = logging.getLogger(__name__)
 
 def set_dark_palette(app):
     palette = QPalette()
@@ -567,9 +570,12 @@ class TextEditor(QMainWindow):
         languages_menu.addAction("CPU Emulators", self.open_assembly_emulator_tab)
         # (keep existing compilers if any)
         env_menu = menu_bar.addMenu("Environments")
-        env_menu.addAction("Create Environment")
-        env_menu.addAction("Configure Environment")
-        env_menu.addAction("Create Custom Environment")
+        env_menu.addAction("Create Environment", self.open_environment_selection)
+        preconfigured_menu = env_menu.addMenu("Pre-configured Environments")
+        self.setup_preconfigured_environments_menu(preconfigured_menu)
+        env_menu.addAction("Manage Environments", self.open_environment_manager)
+        env_menu.addSeparator()
+        env_menu.addAction("Environment Settings", self.open_environment_settings)
         help_menu = menu_bar.addMenu("Help")
         help_menu.addAction("Documentation")
         help_menu.addAction("Tutorial")
@@ -594,6 +600,26 @@ class TextEditor(QMainWindow):
         edit_latex_action = QAction("Edit LaTeX", self)
         edit_latex_action.triggered.connect(self.open_latex_editor)
         tools_menu.addAction(edit_latex_action)
+        
+        # Terminal Organizer
+        terminal_organizer_action = QAction("Terminal Organizer", self)
+        terminal_organizer_action.triggered.connect(self.open_terminal_organizer)
+        tools_menu.addAction(terminal_organizer_action)
+        
+        # Language Detector CLI
+        language_detector_action = QAction("🔍 Language Detector", self)
+        language_detector_action.triggered.connect(self.open_language_detector)
+        tools_menu.addAction(language_detector_action)
+        
+        # System Monitor CLI
+        system_monitor_action = QAction("💻 System Monitor", self)
+        system_monitor_action.triggered.connect(self.open_system_monitor)
+        tools_menu.addAction(system_monitor_action)
+        
+        # Terminal Organizer CLI
+        terminal_organizer_cli_action = QAction("🖥️ Terminal Organizer CLI", self)
+        terminal_organizer_cli_action.triggered.connect(self.open_terminal_organizer_cli)
+        tools_menu.addAction(terminal_organizer_cli_action)
         
         # Advanced loading option
         advanced_loading_action = QAction("Open Large File (Advanced Loading)", self)
@@ -1086,6 +1112,84 @@ class TextEditor(QMainWindow):
         if hasattr(tab_widget, 'add_latex_tab'):
             tab_widget.add_latex_tab()
 
+    def open_terminal_organizer(self):
+        """Open Terminal Organizer as a tab in the editor"""
+        try:
+            from global_.terminal_organizer_widget import TerminalOrganizerWidget
+            
+            tab_widget = self.get_active_tabwidget()
+            
+            # Check if terminal organizer already open
+            for i in range(tab_widget.count()):
+                tab = tab_widget.widget(i)
+                if isinstance(tab, TerminalOrganizerWidget):
+                    tab_widget.setCurrentIndex(i)
+                    return
+            
+            # Create new terminal organizer tab
+            organizer = TerminalOrganizerWidget(self)
+            tab_widget.addTab(organizer, "🔧 Terminal Organizer")
+            tab_widget.setCurrentWidget(organizer)
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to open Terminal Organizer: {str(e)}")
+
+    def open_language_detector(self):
+        """Open Language Detector CLI as a tab in the editor"""
+        try:
+            tab_widget = self.get_active_tabwidget()
+            
+            # Check if already open
+            for i in range(tab_widget.count()):
+                tab = tab_widget.widget(i)
+                if isinstance(tab, LanguageDetectorTab):
+                    tab_widget.setCurrentIndex(i)
+                    return
+            
+            # Create new tab
+            detector_tab = LanguageDetectorTab(self)
+            tab_widget.addTab(detector_tab, "🔍 Language Detector")
+            tab_widget.setCurrentWidget(detector_tab)
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to open Language Detector: {str(e)}")
+
+    def open_system_monitor(self):
+        """Open System Monitor CLI as a tab in the editor"""
+        try:
+            tab_widget = self.get_active_tabwidget()
+            
+            # Check if already open
+            for i in range(tab_widget.count()):
+                tab = tab_widget.widget(i)
+                if isinstance(tab, SystemMonitorTab):
+                    tab_widget.setCurrentIndex(i)
+                    return
+            
+            # Create new tab
+            monitor_tab = SystemMonitorTab(self)
+            tab_widget.addTab(monitor_tab, "💻 System Monitor")
+            tab_widget.setCurrentWidget(monitor_tab)
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to open System Monitor: {str(e)}")
+
+    def open_terminal_organizer_cli(self):
+        """Open Terminal Organizer CLI as a tab in the editor"""
+        try:
+            tab_widget = self.get_active_tabwidget()
+            
+            # Check if already open
+            for i in range(tab_widget.count()):
+                tab = tab_widget.widget(i)
+                if isinstance(tab, TerminalOrganizerTab):
+                    tab_widget.setCurrentIndex(i)
+                    return
+            
+            # Create new tab
+            organizer_tab = TerminalOrganizerTab(self)
+            tab_widget.addTab(organizer_tab, "🖥️ Terminal Organizer")
+            tab_widget.setCurrentWidget(organizer_tab)
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to open Terminal Organizer CLI: {str(e)}")
+
     def get_tabs(self):
         # For dynamic saving compatibility
         return self.get_active_tabwidget()
@@ -1151,6 +1255,85 @@ class TextEditor(QMainWindow):
                 y = 0
             self._minibar.setFixedWidth(width)
             self._minibar.move(self.mapToGlobal(self.rect().topLeft()) + QPoint(x, y))
+
+    # ============== Environment Management Methods ==============
+    
+    def setup_preconfigured_environments_menu(self, menu):
+        """Setup the pre-configured environments submenu"""
+        try:
+            from global_.predefined_environments import list_environments
+            for env_name in list_environments():
+                action = QAction(env_name, self)
+                action.triggered.connect(lambda checked, name=env_name: self.create_preconfigured_environment(name))
+                menu.addAction(action)
+        except ImportError:
+            logger.warning("Could not import predefined_environments")
+    
+    def create_preconfigured_environment(self, env_name):
+        """Create a pre-configured environment"""
+        try:
+            from global_.predefined_environments import get_environment_by_name
+            from global_.environment_ui import EnvironmentBuildDialog
+            from global_.environment_manager import get_docker_manager
+            
+            config = get_environment_by_name(env_name)
+            docker_manager = get_docker_manager()
+            
+            if not docker_manager.is_docker_available():
+                QMessageBox.critical(
+                    self,
+                    "Docker Required",
+                    "Docker is not installed or not running.\n\n" +
+                    docker_manager.get_docker_install_instruction()
+                )
+                return
+            
+            dialog = EnvironmentBuildDialog(self, config, docker_manager)
+            dialog.exec_()
+        except ImportError as e:
+            QMessageBox.critical(self, "Error", f"Failed to load environment modules: {str(e)}")
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to create environment: {str(e)}")
+    
+    def open_environment_selection(self):
+        """Open the environment selection dialog"""
+        try:
+            from global_.environment_ui import EnvironmentSelectionDialog
+            dialog = EnvironmentSelectionDialog(self)
+            dialog.exec_()
+        except ImportError as e:
+            QMessageBox.critical(self, "Error", f"Failed to load environment UI: {str(e)}")
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to open environment selection: {str(e)}")
+    
+    def open_environment_manager(self):
+        """Open the environment manager dialog"""
+        try:
+            from global_.environment_ui import EnvironmentManagerDialog
+            dialog = EnvironmentManagerDialog(self)
+            dialog.exec_()
+        except ImportError as e:
+            QMessageBox.critical(self, "Error", f"Failed to load environment UI: {str(e)}")
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to open environment manager: {str(e)}")
+    
+    def open_environment_settings(self):
+        """Open environment settings"""
+        try:
+            from global_.environment_manager import get_docker_manager
+            docker_manager = get_docker_manager()
+            
+            if docker_manager.is_docker_available():
+                message = f"Docker Status: {docker_manager.docker_version}\n\n"
+                message += f"Workspace: {docker_manager.workspace_dir}\n"
+                message += f"Saved Environments: {len(docker_manager.containers)}"
+                QMessageBox.information(self, "Environment Settings", message)
+            else:
+                message = "Docker is not installed.\n\n"
+                message += docker_manager.get_docker_install_instruction()
+                QMessageBox.warning(self, "Docker Required", message)
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to open environment settings: {str(e)}")
 
 if __name__ == '__main__':
     try:

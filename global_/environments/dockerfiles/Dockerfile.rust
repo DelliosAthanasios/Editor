@@ -1,0 +1,17 @@
+FROM rust:latest
+
+RUN apt-get update && apt-get install -y \
+    git \
+    curl \
+    build-essential \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN rustup component add rust-analyzer rustfmt clippy
+
+RUN cargo install cargo-watch cargo-expand 2>/dev/null || true
+
+WORKDIR /workspace
+
+ENV CARGO_HOME=/workspace/.cargo
+
+CMD ["/bin/bash"]

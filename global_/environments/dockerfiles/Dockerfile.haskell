@@ -1,0 +1,13 @@
+FROM haskell:9.6
+
+RUN apt-get update && apt-get install -y \
+    git \
+    curl \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN stack install hlint 2>/dev/null || true
+
+WORKDIR /workspace
+
+CMD ["/bin/bash"]
