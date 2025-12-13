@@ -134,7 +134,7 @@ def test_dockerfiles():
     try:
         dockerfile_dir = os.path.join(
             os.path.dirname(__file__),
-            "global_", "environments", "dockerfiles"
+            "dockerfiles"
         )
         
         required_files = [
@@ -215,10 +215,10 @@ def test_syntax():
         import tempfile
         
         files_to_check = [
-            "global_/environment_manager.py",
-            "global_/predefined_environments.py",
-            "global_/environment_ui.py",
-            "global_/container_executor.py",
+            "../environment_manager.py",
+            "../predefined_environments.py",
+            "../environment_ui.py",
+            "../container_executor.py",
         ]
         
         for filepath in files_to_check:

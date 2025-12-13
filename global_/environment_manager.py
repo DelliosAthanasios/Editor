@@ -7,6 +7,7 @@ import os
 import json
 import subprocess
 import platform
+import tempfile
 from typing import Dict, List, Optional, Tuple
 from dataclasses import dataclass, asdict
 from enum import Enum
@@ -67,7 +68,7 @@ class DockerManager:
         self._detect_docker()
         self._load_containers_state()
     
-    def _detect_docker(self) -> Tuple[bool, str]:
+    def _detect_docker(self) -> None:
         """Detect Docker installation and version"""
         try:
             result = subprocess.run(
@@ -80,16 +81,12 @@ class DockerManager:
                 self.docker_available = True
                 self.docker_version = result.stdout.strip()
                 logger.info(f"Docker detected: {self.docker_version}")
-                return True, self.docker_version
             else:
                 logger.warning("Docker command exists but failed")
-                return False, result.stderr
         except FileNotFoundError:
             logger.warning("Docker not found on system")
-            return False, "Docker not installed"
         except subprocess.TimeoutExpired:
             logger.warning("Docker detection timed out")
-            return False, "Docker detection timeout"
         except Exception as e:
             logger.error(f"Error detecting Docker: {e}")
             return False, str(e)
@@ -472,7 +469,6 @@ class DockerManager:
     
     def _create_temp_dockerfile(self, content: str) -> str:
         """Create a temporary Dockerfile from inline content"""
-        import tempfile
         fd, path = tempfile.mkstemp(prefix="Dockerfile.", suffix="", text=True)
         os.write(fd, content.encode())
         os.close(fd)
@@ -486,8 +482,12 @@ class DockerManager:
                 with open(state_file, 'r') as f:
                     self.containers = json.load(f)
                 logger.info(f"Loaded {len(self.containers)} container states")
+            except json.JSONDecodeError as e:
+                logger.error(f"Invalid JSON in container state: {e}")
+                self.containers = {}
             except Exception as e:
                 logger.error(f"Error loading container state: {e}")
+                self.containers = {}
     
     def _save_containers_state(self):
         """Save container state to disk"""
