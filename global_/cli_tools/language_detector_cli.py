@@ -14,7 +14,13 @@ import platform
 import subprocess
 from typing import Dict, Optional, List
 
-console = Console()
+# Initialize console with proper Windows encoding support
+try:
+    # Try with force_terminal for better control
+    console = Console(force_terminal=True, legacy_windows=False)
+except TypeError:
+    # Fallback: just initialize normally (Rich will handle encoding)
+    console = Console()
 
 
 class LanguageDetectorCLI:
@@ -26,7 +32,7 @@ class LanguageDetectorCLI:
     
     def detect_all(self):
         """Detect all installed languages"""
-        console.print(Panel("🔍 Programming Language Detector", style="bold blue"))
+        console.print(Panel("[*] Programming Language Detector", style="bold blue"))
         
         languages = [
             ("Python", self._detect_python),

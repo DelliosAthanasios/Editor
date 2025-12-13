@@ -15,7 +15,13 @@ import psutil
 from typing import Dict
 import datetime
 
-console = Console()
+# Initialize console with proper Windows encoding support
+try:
+    # Try with force_terminal for better control
+    console = Console(force_terminal=True, legacy_windows=False)
+except TypeError:
+    # Fallback: just initialize normally (Rich will handle encoding)
+    console = Console()
 
 
 class SystemMonitorCLI:
@@ -27,7 +33,7 @@ class SystemMonitorCLI:
     
     def show_summary(self):
         """Show system summary"""
-        console.print(Panel("💻 System Resources Monitor", style="bold green"))
+        console.print(Panel("[=] System Resources Monitor", style="bold green"))
         
         # System info
         self._show_system_info()

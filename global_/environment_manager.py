@@ -191,6 +191,25 @@ class DockerManager:
             return None
         
         try:
+            # Check if container already exists and remove it
+            try:
+                result = subprocess.run(
+                    ["docker", "ps", "-a", "-q", "-f", f"name={config.container_name}"],
+                    capture_output=True,
+                    text=True,
+                    timeout=10
+                )
+                if result.stdout.strip():
+                    # Container exists, remove it
+                    logger.info(f"Removing existing container: {config.container_name}")
+                    subprocess.run(
+                        ["docker", "rm", "-f", config.container_name],
+                        capture_output=True,
+                        timeout=10
+                    )
+            except Exception as e:
+                logger.warning(f"Could not check for existing container: {e}")
+            
             # Build command
             cmd = ["docker", "run", "-d"]
             
@@ -229,9 +248,9 @@ class DockerManager:
                 container_id = result.stdout.strip()
                 logger.info(f"Container started: {container_id}")
                 
-                # Store container info
+                # Store container info (convert enum to string for JSON serialization)
                 self.containers[config.name] = {
-                    "status": EnvironmentStatus.RUNNING,
+                    "status": EnvironmentStatus.RUNNING.value,
                     "container_id": container_id,
                     "config": asdict(config)
                 }
@@ -269,7 +288,7 @@ class DockerManager:
             )
             
             if result.returncode == 0:
-                self.containers[env_name]["status"] = EnvironmentStatus.STOPPED
+                self.containers[env_name]["status"] = EnvironmentStatus.STOPPED.value
                 self._save_containers_state()
                 logger.info(f"Container stopped: {container_id}")
                 return True
@@ -328,7 +347,7 @@ class DockerManager:
             )
             
             if not result.stdout.strip():
-                self.containers[env_name]["status"] = EnvironmentStatus.IMAGE_MISSING
+                self.containers[env_name]["status"] = EnvironmentStatus.IMAGE_MISSING.value
                 return EnvironmentStatus.IMAGE_MISSING
             
             # Check if running
@@ -339,10 +358,10 @@ class DockerManager:
             )
             
             if result.stdout.strip():
-                self.containers[env_name]["status"] = EnvironmentStatus.RUNNING
+                self.containers[env_name]["status"] = EnvironmentStatus.RUNNING.value
                 return EnvironmentStatus.RUNNING
             else:
-                self.containers[env_name]["status"] = EnvironmentStatus.STOPPED
+                self.containers[env_name]["status"] = EnvironmentStatus.STOPPED.value
                 return EnvironmentStatus.STOPPED
         except Exception as e:
             logger.error(f"Error checking container status: {e}")

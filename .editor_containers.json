@@ -1,0 +1,18 @@
+{
+  "Lisp Machine": {
+    "status": "running",
+    "container_id": "83c40c7733d4702e387daff1127abd6d76fbd037ddf36f7d93a00ad5996aca9b",
+    "config": {
+      "name": "Lisp Machine",
+      "language": "Lisp",
+      "dockerfile": "FROM ubuntu:22.04\n\nRUN apt-get update && apt-get install -y \\\n    sbcl \\\n    curl \\\n    git \\\n    build-essential \\\n    && rm -rf /var/lib/apt/lists/*\n\nRUN curl -O https://beta.quicklisp.org/quicklisp.lisp 2>/dev/null && \\\n    sbcl --non-interactive --load quicklisp.lisp \\\n    --eval '(quicklisp-quickstart:install)' 2>/dev/null || true && \\\n    rm -f quicklisp.lisp\n\nWORKDIR /workspace\n\nCMD [\"/bin/bash\"]\n",
+      "docker_compose": null,
+      "volumes": {},
+      "ports": {},
+      "env_vars": {},
+      "image_name": "editor-lisp:latest",
+      "container_name": "editor-lisp-container",
+      "description": "SBCL with Quicklisp for Lisp/Scheme development"
+    }
+  }
+}

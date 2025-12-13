@@ -312,7 +312,14 @@ class TerminalScanner:
 
 class TerminalOrganizerCLI:
     def __init__(self):
-        self.console = Console()
+        # Initialize console with proper Windows encoding support
+        try:
+            # Try with force_terminal for better control
+            self.console = Console(force_terminal=True, legacy_windows=False)
+        except TypeError:
+            # Fallback: just initialize normally (Rich will handle encoding)
+            self.console = Console()
+        
         self.scanner = TerminalScanner()
         self.environments = []
         self.running_processes = {}
@@ -384,7 +391,7 @@ class TerminalOrganizerCLI:
         with self.console.status("[bold green]Scanning for terminal environments...") as status:
             self.environments = self.scanner.scan_all_environments()
         
-        self.console.print(f"[green]✓[/green] Found {len(self.environments)} terminal environments")
+        self.console.print(f"[green][+][/green] Found {len(self.environments)} terminal environments")
         self.console.print()
     
     def list_terminals(self, filter_term: str = ""):
